@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件管理 - 服务器</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/video-js.min.css">
+<script src="/static/theme.js"></script>
+<script src="/static/common.js"></script>
+<script src="/static/netcheck.js"></script>
+<script src="/static/video.min.js"></script>
+<script src="/static/player.js"></script>
+<style>
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 22px 60px; }
+  h1 { font-size: 18px; font-weight: 600; }
+  .danger { color: var(--hot); }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  #crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; font-size: 14px; flex: 1; min-width: 200px; }
+  #crumb a { color: var(--accent); text-decoration: none; padding: 4px 6px; border-radius: 6px; }
+  #crumb a:hover { background: var(--card); }
+  #crumb .sep { color: var(--dim); }
+  #crumb .cur { color: var(--text); padding: 4px 6px; }
+  .btn {
+    padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 13px; cursor: pointer; transition: .15s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: #06121f; font-weight: 600; }
+  .btn.danger:hover { border-color: var(--hot); color: var(--hot); }
+  .btn.active { border-color: var(--accent); color: var(--accent); }
+  #search {
+    padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 13px; width: 160px; outline: none;
+  }
+  #search:focus { border-color: var(--accent); }
+
+  /* 磁盘卡片 */
+  .drives { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .drive {
+    background: linear-gradient(160deg, var(--card2), var(--card));
+    border: 1px solid var(--line); border-radius: 16px; padding: 18px; cursor: pointer; transition: .18s;
+  }
+  .drive:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 8px 24px rgba(56,189,248,.12); }
+  .drive .d-name { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+  .drive .d-fs { font-size: 11px; color: var(--dim); margin-bottom: 12px; }
+  .d-bar { background: var(--inset); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+  .d-bar div { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .d-bar div.warn { background: linear-gradient(90deg, var(--warn), var(--hot)); }
+  .drive .d-usage { font-size: 12px; color: var(--dim); }
+
+  /* 文件列表 */
+  .list { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 16px;
+    border-bottom: 1px solid var(--line-soft); cursor: pointer; transition: .12s;
+  }
+  .row:hover { background: rgba(56,189,248,.06); }
+  .row:last-child { border-bottom: none; }
+  .row .icon { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+  .row .name { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .size { color: var(--dim); font-size: 12px; width: 90px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .row .mtime { color: var(--dim); font-size: 12px; width: 130px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .row .acts { display: flex; gap: 4px; flex-shrink: 0; opacity: 0; transition: .15s; }
+  .row:hover .acts { opacity: 1; }
+  @media (hover: none) { .row .acts { opacity: 1; } }
+  .iconbtn {
+    width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+    background: transparent; color: var(--dim); cursor: pointer; font-size: 13px;
+  }
+  .iconbtn:hover { color: var(--accent); border-color: var(--accent); }
+  .iconbtn.del:hover { color: var(--hot); border-color: var(--hot); }
+  .empty { text-align: center; color: var(--dim); padding: 48px 0; font-size: 14px; }
+  @media (max-width: 560px) { .row .mtime { display: none; } .row .size { width: 70px; } }
+
+  /* 传输管理 */
+  #xfmini {
+    position: fixed; left: 18px; bottom: 18px; z-index: 60; display: none;
+    align-items: center; gap: 6px; padding: 10px 16px; border-radius: 999px;
+    background: var(--card2); border: 1px solid var(--line); color: var(--text);
+    font-size: 13px; cursor: pointer; box-shadow: var(--shadow-lg);
+  }
+  #xfmini:hover { border-color: var(--accent); }
+  #clipbar { display: none; align-items: center; gap: 10px; padding: 9px 14px; margin-bottom: 12px;
+             background: var(--card2); border: 1px dashed var(--accent); border-radius: 10px; font-size: 13px; }
+  #clipbar.show { display: flex; }
+  #clipbar .c-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+  #clipbar .c-tag { font-size: 11px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  #clipbar button { padding: 4px 12px; border-radius: 7px; border: 1px solid var(--line);
+                    background: var(--card); color: var(--text); font-size: 12px; cursor: pointer; }
+  .xf-panel { width: 760px; max-width: 94vw; max-height: 86vh; overflow: auto; }
+  .xf-item { display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+             background: var(--card2); border-radius: 10px; margin-bottom: 8px; }
+  .xf-item .xf-ic { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; }
+  .xf-item .xf-main { flex: 1; min-width: 0; }
+  .xf-item .xf-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .xf-item .xf-meta { font-size: 11px; color: var(--dim); margin-top: 3px;
+                      display: flex; gap: 10px; align-items: center; }
+  .xf-item .xf-bar { height: 5px; border-radius: 3px; background: var(--inset); overflow: hidden; margin-top: 5px; }
+  .xf-item .xf-bar div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .25s; }
+  .xf-item.done .xf-bar div { background: var(--ok); }
+  .xf-item.fail .xf-bar div { background: var(--hot); }
+  .xf-item .xf-acts { flex-shrink: 0; }
+  .xf-item .iconbtn { width: 26px; height: 26px; font-size: 12px; }
+  .xf-sect { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .xf-st { font-size: 11px; font-weight: 600; }
+  .xf-st.ok { color: var(--ok); } .xf-st.fail { color: var(--hot); }
+  .xf-st.run { color: var(--accent); } .xf-st.q { color: var(--dim); }
+
+  /* 行复选框 (批量下载) */
+  .row .ck, .ck-all { width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
+
+  /* 文档编辑/预览 */
+  .ed-wrap { width: 86vw; max-width: 1000px; height: 82vh; display: flex; flex-direction: column;
+             background: var(--card); border-radius: 14px; overflow: hidden; }
+  .ed-bar { display: flex; gap: 8px; align-items: center; padding: 10px 14px;
+            border-bottom: 1px solid var(--line); background: var(--card2); }
+  .ed-bar .ed-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+                     white-space: nowrap; max-width: 320px; }
+  .ed-area { flex: 1; resize: none; border: none; outline: none; padding: 16px 18px;
+             background: var(--bg); color: var(--text); font: 13px/1.7 Consolas, "Courier New", monospace; }
+  .ed-prev { flex: 1; overflow: auto; padding: 20px 26px; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.8; }
+  .ed-prev code { background: var(--inset); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+  .ed-prev pre { background: var(--inset); padding: 12px 14px; border-radius: 10px; overflow: auto; }
+  .docx-wrap, .pptx-wrap { width: 80vw; max-width: 900px; max-height: 86vh; overflow: auto;
+                           background: #fff; color: #1e293b; border-radius: 10px; padding: 34px 44px;
+                           font: 14px/1.9 "Microsoft YaHei", serif; }
+  .docx-doc h1, .docx-doc h2, .docx-doc h3 { margin: 1em 0 .4em; }
+  .docx-doc table, .xlsx-table { border-collapse: collapse; }
+  .docx-doc td, .docx-doc th, .xlsx-table td { border: 1px solid #cbd5e1; padding: 4px 10px; font-size: 13px; }
+  .xlsx-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .xlsx-tabs button { padding: 5px 14px; border-radius: 8px; border: 1px solid var(--line);
+                      background: var(--card2); color: var(--text); cursor: pointer; font-size: 12px; }
+  .xlsx-tabs button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .xlsx-scroll table { border-collapse: collapse; }
+  .xlsx-scroll td { border: 1px solid #cbd5e1; padding: 4px 12px; font-size: 13px; }
+  .xlsx-scroll { max-height: 66vh; overflow: auto; background: #fff; color: #1e293b; border-radius: 8px; }
+  .pptx-slide { background: #fff; color: #1e293b; border-radius: 10px; padding: 16px 22px; margin-bottom: 12px; }
+  .pptx-slide .n { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+
+
+  /* 拖拽遮罩 */
+  #dropzone {
+    position: fixed; inset: 0; background: var(--scrim); z-index: 100;
+    display: none; align-items: center; justify-content: center; font-size: 22px; color: var(--accent);
+    border: 3px dashed var(--accent); border-radius: 20px; margin: 12px;
+  }
+  #dropzone.show { display: flex; }
+
+  /* 预览弹窗 */
+  .modal { position: fixed; inset: 0; background: rgba(8,15,28,.55); backdrop-filter: blur(6px); z-index: 200; display: none; align-items: center; justify-content: center; padding: 24px; }
+  .modal.show { display: flex; }
+  .modal .m-body { max-width: 94vw; max-height: 90vh; position: relative; }
+  .modal img { max-width: 94vw; max-height: 88vh; border-radius: 12px; display: block; }
+  .modal video { max-width: 94vw; max-height: 88vh; border-radius: 12px; display: block; background: #000; }
+  .modal pre {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; max-width: 90vw; max-height: 85vh; overflow: auto; font-size: 13px; color: var(--text);
+  }
+  .m-close {
+    position: absolute; top: -14px; right: -14px; width: 34px; height: 34px; border-radius: 50%;
+    background: var(--card2); border: 1px solid var(--line); color: var(--text); cursor: pointer; font-size: 15px; z-index: 5;
+  }
+  audio { width: 70vw; max-width: 560px; }
+
+  /* 对话框 */
+  .dlg { position: fixed; inset: 0; background: rgba(8,15,28,.55); backdrop-filter: blur(6px); z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px; }
+  .dlg.show { display: flex; }
+  .dlg .d-box { background: var(--card2); border: 1px solid var(--line); border-radius: 16px; padding: 24px; width: 340px; max-width: 94vw; }
+  .dlg h3 { font-size: 15px; margin-bottom: 8px; }
+  .dlg p { font-size: 13px; color: var(--dim); margin-bottom: 16px; word-break: break-all; }
+  .dlg input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 14px; outline: none; margin-bottom: 16px; }
+  .dlg input:focus { border-color: var(--accent); }
+  .dlg .d-acts { display: flex; gap: 8px; justify-content: flex-end; }
+  /* 排序下拉 */
+  select.btn { cursor: pointer; }
+
+  /* 图片墙 */
+  .gview { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; transition: .15s; position: relative; }
+  .tile:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .tile .t-img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--inset); }
+  .tile .t-body { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; background: var(--card2); }
+  .tile .t-body .icon { font-size: 42px; }
+  .tile .t-name { padding: 7px 10px; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: rgba(11,18,32,.78); position: absolute; left: 0; right: 0; bottom: 0; }
+  .tile .t-badge { position: absolute; top: 8px; left: 8px; font-size: 17px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
+  @media (max-width: 560px) { .gview { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; } }
+
+  /* 自定义播放器样式已移至 /static/player.js (与影视库共用) */
+  body.boot-guard .wrap { display: none; }   /* 权限确认前隐藏内容, 防无权限用户看到一闪而过 */
+  @keyframes dlgIn { from { opacity: 0 } to { opacity: 1 } }
+  .modal.show, .dlg.show { animation: dlgIn .18s ease; }
+</style>
+</head>
+<body class="boot-guard">
+<header class="topbar">
+  <h1>文件管理</h1>
+  <nav class="nav">
+    <a href="/">中控</a>
+    <a href="/monitor">监控</a>
+    <a href="/media">影视</a>
+    <a href="/files" class="active">文件</a>
+    <a href="/downloads">下载</a>
+    <a href="/games">游戏</a>
+  </nav>
+  <div class="tb-actions">
+    <button class="theme-btn" onclick="toggleTheme()" title="切换日间/夜间模式">
+      <span class="i-moon">🌙</span><span class="i-sun">☀️</span>
+    </button>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="toolbar" id="toolbar" style="display:none">
+  <div id="crumb"></div>
+  <input id="search" placeholder="搜索当前目录">
+  <button class="btn" onclick="goUp()" id="upbtn" style="display:none">上级</button>
+  <button class="btn" onclick="mkdirDlg()">新建</button>
+  <button class="btn" onclick="uploadDlg()">上传</button>
+  <button class="btn" id="pastebtn" style="display:none" onclick="pasteClip()">粘贴</button>
+  <div id="clipbar">
+    <span class="c-tag" id="clip-mode"></span>
+    <span class="c-path" id="clip-path"></span>
+    <button onclick="clearClip()">✕ 取消</button>
+  </div>
+  <button class="btn" id="dlselbtn" style="display:none" onclick="downloadSelected()">下载选中</button>
+  <button class="btn" id="cutselbtn" style="display:none" onclick="clipSel('cut')">剪切选中</button>
+  <button class="btn" id="copyselbtn" style="display:none" onclick="clipSel('copy')">复制选中</button>
+  <button class="btn" id="selclear" style="display:none" onclick="clearSel()">取消选择</button>
+  <button class="btn" onclick="xfOpen()">传输管理<span id="xf-badge" style="display:none;margin-left:5px;background:var(--accent);color:#06121f;border-radius:999px;padding:0 7px;font-size:11px;font-weight:700">0</span></button>
+  <select id="sortsel" class="btn" onchange="setSort(this.value)" title="排序方式">
+    <option value="name">名称 ↑</option>
+    <option value="name_desc">名称 ↓</option>
+    <option value="time_desc">时间 ↓</option>
+    <option value="time">时间 ↑</option>
+    <option value="size_desc">大小 ↓</option>
+  </select>
+  <button class="btn" id="viewbtn" onclick="toggleView()" title="列表 / 图片墙">▦ 图片墙</button>
+  <button class="btn" id="hidbtn" onclick="toggleHidden()">隐藏项</button>
+  <button class="btn" onclick="sharesDlg()">我的分享</button>
+  <button class="btn" onclick="load(current)">刷新</button>
+</div>
+
+<div id="view"></div>
+</div>
+
+<div id="dropzone"><div>松开鼠标，上传到当前目录</div></div>
+<button id="xfmini" onclick="xfOpen()"><span style="color:var(--accent)">⇅</span> <span id="xfmini-n">0</span> 个传输中</button>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="m-body" id="m-body"></div>
+</div>
+
+<div class="dlg" id="dlg">
+  <div class="d-box">
+    <h3 id="dlg-title"></h3>
+    <p id="dlg-text"></p>
+    <input id="dlg-input" style="display:none">
+    <div class="d-acts">
+      <button class="btn" onclick="dlgCancel()">取消</button>
+      <button class="btn primary" id="dlg-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="fileinput" multiple style="display:none">
+
+<script>
+let current = '';   // 当前目录, '' = 磁盘根视图
+const fmtTime = t => new Date(t*1000).toLocaleString('zh-CN', {hour12:false,
+  year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+const extOf = n => (n.lastIndexOf('.') > 0 ? n.slice(n.lastIndexOf('.')).toLowerCase() : '');
+const IMG = new Set(['.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg','.ico','.avif']);
+const VID = new Set(['.mp4','.webm','.mkv','.mov','.avi','.m4v']);
+const AUD = new Set(['.mp3','.flac','.wav','.ogg','.m4a','.aac']);
+const TXT = new Set(['.txt','.md','.log','.json','.xml','.csv','.py','.js','.css','.html','.ini','.bat','.ps1','.yml','.yaml','.conf','.srt']);
+const PDF = new Set(['.pdf']);
+
+function iconFor(name, isDir) {
+  if (isDir) return '📁';
+  const e = extOf(name);
+  if (IMG.has(e)) return '🖼️';
+  if (VID.has(e)) return '🎬';
+  if (AUD.has(e)) return '🎵';
+  if (PDF.has(e)) return '📕';
+  if (TXT.has(e)) return '📄';
+  if (['.zip','.rar','.7z','.tar','.gz'].includes(e)) return '🗜️';
+  if (['.exe','.msi','.bat','.ps1'].includes(e)) return '⚙️';
+  if (['.doc','.docx','.wps'].includes(e)) return '📘';
+  if (['.xls','.xlsx','.et'].includes(e)) return '📗';
+  if (['.ppt','.pptx','.dps'].includes(e)) return '📙';
+  if (['.iso','.img'].includes(e)) return '💿';
+  return '📄';
+}
+
+/* ---------- 对话框 ---------- */
+let dlgCb = null;
+function dlg(title, text, withInput, value, cb) {
+  $('dlg-title').textContent = title;
+  $('dlg-text').textContent = text;
+  $('dlg-input').style.display = withInput ? 'block' : 'none';
+  $('dlg-input').value = value || '';
+  $('dlg-text').style.display = withInput ? 'none' : 'block';
+  dlgCb = cb;
+  $('dlg').classList.add('show');
+  if (withInput) setTimeout(() => { $('dlg-input').focus(); $('dlg-input').select(); }, 50);
+}
+function dlgCancel() { $('dlg').classList.remove('show'); dlgCb = null; }
+$('dlg-ok').onclick = () => {
+  const v = $('dlg-input').value;
+  $('dlg').classList.remove('show');
+  if (dlgCb) dlgCb(v);
+  dlgCb = null;
+};
+$('dlg-input').onkeydown = e => { if (e.key === 'Enter') $('dlg-ok').click(); };
+
+/* ---------- 路径工具 ---------- */
+function join(dir, name) {
+  if (!dir) return name;
+  return dir.replace(/[\\/]+$/, '') + '\\' + name;
+}
+function parent(p) {
+  // "D:\x" → "D:\";  "D:\" → '' (此电脑);  "D:\a\b" → "D:\a"
+  const i = p.lastIndexOf('\\');
+  if (i <= 2) {
+    return /^[a-zA-Z]:\\?$/.test(p) ? '' : p.slice(0, 3);
+  }
+  return p.slice(0, i);
+}
+
+/* ---------- 磁盘根视图 ---------- */
+async function loadRoots() {
+  current = '';
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  $('toolbar').style.display = 'none';
+  $('view').innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const roots = await api('/api/fs/roots');
+    $('view').innerHTML = '<div class="drives">' + roots.map(r => {
+      const cls = r.percent >= 90 ? 'warn' : '';
+      return `<div class="drive" data-path="${esc(r.path)}">
+        <div class="d-name">${esc(r.path)}</div>
+        <div class="d-fs">${esc(r.fstype || '')}</div>
+        <div class="d-bar"><div class="${cls}" style="width:${r.percent}%"></div></div>
+        <div class="d-usage">${fmtSize(r.used)} / ${fmtSize(r.total)} · ${r.percent.toFixed(0)}%</div>
+      </div>`;
+    }).join('') + '</div>';
+    document.querySelectorAll('.drive').forEach(el => { el.onclick = () => openDir(el.dataset.path); });
+  } catch (e) { $('view').innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; }
+}
+
+/* ---------- 目录视图 ---------- */
+async function openDir(p) {
+  if (!p) { loadRoots(); return; }
+  location.hash = encodeURIComponent(p);
+  load(p);
+}
+async function load(p) {
+  current = p;
+  $('toolbar').style.display = 'flex';
+  $('upbtn').style.display = p ? 'inline-flex' : 'none';
+  $('view').innerHTML = '<div class="empty">加载中…</div>';
+  let data;
+  try { data = await api('/api/fs/list?path=' + encodeURIComponent(p) + (showHidden ? '&hidden=1' : '')); }
+  catch (e) { toast('打开失败: ' + e.message); return loadRoots(); }
+  renderCrumb(data.path);
+  renderList(data);
+}
+function goUp() { if (current) openDir(parent(current)); }
+
+function renderCrumb(p) {
+  const parts = p.split('\\').filter(Boolean);
+  let acc = '';
+  let html = `<a data-path="">此电脑</a>`;
+  parts.forEach((seg, i) => {
+    acc = (i === 0) ? seg + '\\' : acc + seg + (i < parts.length - 1 ? '\\' : '');
+    html += `<span class="sep">›</span><a data-path="${esc(acc)}">${esc(seg)}</a>`;
+  });
+  $('crumb').innerHTML = html;
+  document.querySelectorAll('#crumb a').forEach(el => { el.onclick = () => openDir(el.dataset.path); });
+}
+
+let lastDirs = [], lastFiles = [];
+let clip = null;                           // 剪贴板 {mode:'move'|'copy', paths:[完整路径]}
+let sel = new Set();                       // 批量下载勾选 (当前目录文件名)
+function toggleSel(name, on) {
+  if (on) sel.add(name); else sel.delete(name);
+  syncDlSel();
+}
+function clearSel() { sel.clear(); syncDlSel(); drawRows(); }
+function syncDlSel() {
+  const n = sel.size;
+  $('dlselbtn').style.display = n ? 'inline-flex' : 'none';
+  $('dlselbtn').textContent = `下载选中 (${n})`;
+  $('cutselbtn').style.display = n ? 'inline-flex' : 'none';
+  $('copyselbtn').style.display = n ? 'inline-flex' : 'none';
+  $('selclear').style.display = n ? 'inline-flex' : 'none';
+}
+function downloadSelected() {
+  if (!sel.size) return;
+  downloadQueue([...sel]);
+  clearSel();
+}
+function clipSel(mode) {
+  if (!sel.size || !current) return;
+  clipSet(mode, [...sel].map(n => join(current, n)));
+  clearSel();
+  toast(mode === 'cut' ? `已剪切 ${clip.paths.length} 项, 导航到目标目录后粘贴`
+                        : `已复制 ${clip.paths.length} 项, 导航到目标目录后粘贴`);
+}
+
+/* ---------- 剪贴板 (剪切/复制/粘贴) ---------- */
+function clipSet(mode, fullPaths) {
+  clip = { mode, paths: fullPaths };
+  syncClipUI();
+}
+function clearClip() { clip = null; syncClipUI(); }
+function syncClipUI() {
+  const bar = $('clipbar'), btn = $('pastebtn');
+  if (!clip || !clip.paths.length) { bar.classList.remove('show'); btn.style.display = 'none'; return; }
+  bar.classList.add('show');
+  $('clip-mode').textContent = clip.mode === 'move' ? '✂ 剪切' : '⧉ 复制';
+  $('clip-path').textContent = clip.paths.length === 1
+    ? clip.paths[0] : clip.paths.length + ' 个项目';
+  btn.style.display = current ? 'inline-flex' : 'none';
+  btn.textContent = clip.mode === 'move' ? '粘贴 (移动)' : '粘贴 (复制)';
+}
+async function pasteClip() {
+  if (!clip || !current) return;
+  const mode = clip.mode, paths = clip.paths;
+  const endpoint = mode === 'cut' ? 'move' : mode;   // 剪切 = 移动
+  const btn = $('pastebtn');
+  btn.disabled = true; btn.textContent = '处理中…';
+  let ok = 0, fail = 0;
+  for (const p of paths) {
+    try {
+      await api('/api/fs/' + endpoint, { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ path: p, target: current }) });
+      ok++;
+    } catch (e) { fail++; toast((mode === 'move' ? '移动' : '复制') + '失败: ' + e.message); }
+  }
+  if (mode === 'move' || mode === 'cut') clearClip();           // 移动/剪切后清空剪贴板; 复制保留可重复粘贴
+  btn.disabled = false; syncClipUI();
+  if (ok) toast(`${mode === 'cut' ? '剪切' : mode === 'copy' ? '复制' : '移动'}完成 (${ok} 项${fail ? ', 失败 ' + fail : ''})`);
+  load(current);
+}
+function renderList(data) {
+  sel.clear(); syncDlSel();
+  lastDirs = data.dirs; lastFiles = data.files;
+  drawRows();
+}
+
+/* ---------- 排序与视图 ---------- */
+let sortKey = localStorage.getItem('sort') || 'name';
+let gallery = localStorage.getItem('gallery') === '1';
+$('sortsel').value = sortKey;
+function syncViewBtn() {
+  $('viewbtn').classList.toggle('active', gallery);
+  $('viewbtn').textContent = gallery ? '☰ 列表' : '▦ 图片墙';
+}
+function setSort(k) { sortKey = k; localStorage.setItem('sort', k); drawRows(); }
+function toggleView() { gallery = !gallery; localStorage.setItem('gallery', gallery ? '1' : '0'); syncViewBtn(); drawRows(); }
+syncViewBtn();
+
+function parseSort() {
+  if (sortKey.endsWith('_desc')) return [sortKey.slice(0, -5), true];
+  return [sortKey, false];
+}
+function sortList(list, withSize) {
+  const [k, rev] = parseSort();
+  const dir = rev ? -1 : 1;
+  return [...list].sort((a, b) => {
+    if (k === 'size' && withSize) return dir * ((a.size || 0) - (b.size || 0));
+    if (k === 'time') return dir * ((a.mtime || 0) - (b.mtime || 0));
+    return dir * a.name.toLowerCase().localeCompare(b.name.toLowerCase(), 'zh');
+  });
+}
+
+function drawRows() {
+  const q = $('search').value.trim().toLowerCase();
+  const dirs = sortList(lastDirs.filter(d => !q || d.name.toLowerCase().includes(q)), false);
+  const files = sortList(lastFiles.filter(f => !q || f.name.toLowerCase().includes(q)), true);
+  if (gallery) return renderGallery(dirs, files);
+  let html = '';
+  if (!dirs.length && !files.length) {
+    html = '<div class="empty">' + (q ? '无匹配项' : '空目录') + '</div>';
+  }
+  dirs.forEach(d => {
+    html += row(d.name, true, null, d.mtime);
+  });
+  files.forEach(f => {
+    html += row(f.name, false, f.size, f.mtime);
+  });
+  $('view').innerHTML = '<div class="list">' + html + '</div>';
+  document.querySelectorAll('.row').forEach(el => {
+    el.onclick = e => {
+      if (e.target.classList.contains('ck')) { toggleSel(e.target.dataset.ck, e.target.checked); return; }
+      const act = e.target.closest('[data-act]');
+      const name = el.dataset.name, isDir = el.dataset.dir === '1';
+      if (act) {
+        const a = act.dataset.act;
+        if (a === 'download') download(name);
+        else if (a === 'share') shareDlg(name);
+        else if (a === 'rename') renameDlg(name);
+        else if (a === 'delete') deleteDlg(name, isDir);
+        else if (a === 'copy') clipSet('copy', [join(current, name)]);
+        else if (a === 'cut') clipSet('cut', [join(current, name)]);
+        return;
+      }
+      if (isDir) openDir(join(current, name));
+      else openFile(name);
+    };
+  });
+}
+
+/* ---------- 图片墙 ---------- */
+function tileHtml(name, isDir) {
+  const p = join(current, name);
+  const e = extOf(name);
+  let inner = `<div class="t-body"><div class="icon">${iconFor(name, isDir)}</div></div>`;
+  if (isDir) inner = `<div class="t-body"><div class="icon">📁</div></div>`;
+  else if (IMG.has(e)) inner = `<img class="t-img" loading="lazy" data-icon="🖼️" src="/api/fs/thumb?path=${encodeURIComponent(p)}">`;
+  else if (VID.has(e)) inner = `<img class="t-img" loading="lazy" data-icon="🎬" src="/api/fs/thumb?video=1&path=${encodeURIComponent(p)}"><span class="t-badge">🎬</span>`;
+  return `<div class="tile" data-name="${esc(name)}" data-dir="${isDir ? 1 : 0}" title="${esc(name)}">${inner}<div class="t-name">${esc(name)}</div></div>`;
+}
+function renderGallery(dirs, files) {
+  if (!dirs.length && !files.length) {
+    $('view').innerHTML = '<div class="empty">' + ($('search').value ? '无匹配项' : '空目录') + '</div>';
+    return;
+  }
+  $('view').innerHTML = '<div class="gview">' +
+    dirs.map(d => tileHtml(d.name, true)).join('') +
+    files.map(f => tileHtml(f.name, false)).join('') + '</div>';
+  document.querySelectorAll('.tile img').forEach(img => {
+    img.onerror = () => {
+      const d = document.createElement('div');
+      d.className = 't-body';
+      d.innerHTML = `<div class="icon">${img.dataset.icon || '📄'}</div>`;
+      img.replaceWith(d);
+    };
+  });
+  document.querySelectorAll('.tile').forEach(el => {
+    el.onclick = () => {
+      const name = el.dataset.name, isDir = el.dataset.dir === '1';
+      if (isDir) openDir(join(current, name));
+      else openFile(name);
+    };
+  });
+}
+function row(name, isDir, size, mtime) {
+  const ck = isDir ? '' : `<input type="checkbox" class="ck" data-ck="${esc(name)}" ${sel.has(name) ? 'checked' : ''} title="加入下载队列">`;
+  return `<div class="row" data-name="${esc(name)}" data-dir="${isDir?1:0}">
+    ${ck}
+    <div class="icon">${iconFor(name, isDir)}</div>
+    <div class="name">${esc(name)}</div>
+    <div class="size">${isDir ? '文件夹' : fmtSize(size)}</div>
+    <div class="mtime">${fmtTime(mtime)}</div>
+    <div class="acts">
+      ${isDir ? '' : `<button class="iconbtn" title="分享" data-act="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" width="14" height="14"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6 4.4M8.2 13.2l7.6-4.4"/></svg></button>`}
+      ${isDir ? '' : `<button class="iconbtn" title="下载" data-act="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 3v11m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>`}
+      <button class="iconbtn" title="复制" data-act="copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>
+      <button class="iconbtn" title="剪切" data-act="cut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" width="14" height="14"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M8 7.5L20 19M8 16.5L20 5"/></svg></button>
+      <button class="iconbtn" title="重命名" data-act="rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M17 3l4 4L8 20H4v-4z"/></svg></button>
+      <button class="iconbtn del" title="删除" data-act="delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" width="14" height="14"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+    </div>
+  </div>`;
+}
+$('search').oninput = drawRows;
+
+/* ---------- 隐藏项开关 ---------- */
+let showHidden = localStorage.getItem('showHidden') === '1';
+function syncHidBtn() {
+  const b = $('hidbtn');
+  b.classList.toggle('active', showHidden);
+  b.title = showHidden ? '当前显示隐藏/系统文件，点击恢复隐藏' : '显示系统/隐藏文件（如 $RECYCLE.BIN）';
+}
+function toggleHidden() {
+  showHidden = !showHidden;
+  localStorage.setItem('showHidden', showHidden ? '1' : '0');
+  syncHidBtn();
+  if (current) load(current); else loadRoots();
+}
+syncHidBtn();
+
+/* ---------- 传输队列 (上传/下载统一管理) ---------- */
+const XF = { items: [], seq: 1, hist: [], MAXUP: 3, MAXDOWN: 3, STREAM_MAX: 1024 * 1024 * 1024 };
+let xfModalOpen = false, xfRenderTimer = 0, xfModalEl = null;
+try { XF.hist = JSON.parse(localStorage.getItem('xf_hist') || '[]'); } catch (e) { XF.hist = []; }
+if (!Array.isArray(XF.hist)) XF.hist = [];
+
+function xfCounts() {
+  const act = XF.items.filter(x => x.status === '排队中' || x.status === '传输中');
+  return { act: act.length, up: act.filter(x => x.kind === 'up').length, down: act.filter(x => x.kind === 'down').length };
+}
+function xfRefresh() {
+  const c = xfCounts();
+  const mini = $('xfmini');
+  if (mini) {
+    mini.style.display = c.act ? 'inline-flex' : 'none';
+    $('xfmini-n').textContent = c.act;
+  }
+  const badge = $('xf-badge');
+  if (badge) { badge.style.display = c.act ? '' : 'none'; badge.textContent = c.act; }
+  if (xfModalOpen && !xfRenderTimer) xfRenderTimer = setTimeout(() => { xfRenderTimer = 0; if (xfModalOpen) xfRender(); }, 250);
+}
+function xfAdd(o) {
+  o.id = XF.seq++; o.status = '排队中'; o.loaded = 0; o.ts = Date.now();
+  XF.items.unshift(o);
+  xfRefresh(); xfPump();
+  return o;
+}
+function xfPump() {
+  const cnt = k => XF.items.filter(x => x.kind === k && x.status === '传输中').length;
+  XF.items.filter(x => x.status === '排队中').forEach(x => {
+    if (x.kind === 'up' && cnt('up') < XF.MAXUP) startUpload(x);
+    else if (x.kind === 'down' && cnt('down') < XF.MAXDOWN) startDownload(x);
+  });
+}
+function xfFinish(id, status, err) {
+  const x = XF.items.find(i => i.id === id);
+  if (!x || ['已完成', '失败', '已取消', '已交浏览器'].includes(x.status)) return;
+  x.status = status; x.end = Date.now();
+  if (err) x.err = err;
+  try {
+    XF.hist.unshift({ kind: x.kind, name: x.name, size: x.size, status, dir: x.dir, end: x.end, err: x.err || '' });
+    XF.hist = XF.hist.slice(0, 100);
+    localStorage.setItem('xf_hist', JSON.stringify(XF.hist));
+  } catch (e) {}
+  xfRefresh();
+  xfPump();                                   // 空出的并发名额立即推进排队项
+}
+function xfCancel(id) {
+  const x = XF.items.find(i => i.id === id);
+  if (!x) return;
+  if (x.xhr) x.xhr.abort();
+  if (x.ctrl) x.ctrl.abort();
+  xfFinish(id, '已取消');
+}
+setInterval(() => {
+  let changed = false;
+  XF.items.forEach(x => {
+    if (x.status !== '传输中') return;
+    const now = performance.now();
+    const dt = (now - (x._t || now)) / 1000;
+    if (x._l != null && dt > 0.2) x.speed = Math.max(0, (x.loaded - x._l) * 8 / dt / 1e6);
+    x._l = x.loaded; x._t = now;
+    changed = true;
+  });
+  if (changed) xfRefresh();
+}, 800);
+
+function startUpload(x) {
+  x.status = '传输中'; xfRefresh();
+  const xhr = new XMLHttpRequest();
+  x.xhr = xhr;
+  xhr.open('PUT', '/api/fs/upload?path=' + encodeURIComponent(x.dir) +
+                 '&name=' + encodeURIComponent(x.name));
+  xhr.upload.onprogress = e => { if (e.lengthComputable) { x.loaded = e.loaded; xfRefresh(); } };
+  xhr.onload = () => {
+    if (xhr.status === 200) { x.loaded = x.size; xfFinish(x.id, '已完成'); if (x.dir === current) scheduleLoad(); }
+    else xfFinish(x.id, '失败', 'HTTP ' + xhr.status);
+  };
+  xhr.onerror = () => xfFinish(x.id, '失败', '网络错误');
+  xhr.send(x.file);
+}
+let loadTimer = 0;
+function scheduleLoad() {           // 多文件上传完成时防抖刷新目录
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => { if (current) load(current); }, 800);
+}
+function startDownload(x) {
+  x.status = '传输中'; xfRefresh();
+  x.ctrl = new AbortController();
+  fetch('/api/fs/download?path=' + encodeURIComponent(join(x.dir, x.name)), { signal: x.ctrl.signal })
+    .then(async r => {
+      if (r.status === 401) { location.href = '/login'; return; }
+      if (!r.ok) { xfFinish(x.id, '失败', 'HTTP ' + r.status); toast('下载失败: ' + x.name); return; }
+      const reader = r.body.getReader();
+      const parts = [];
+      let loaded = 0;
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        parts.push(chunk.value);
+        loaded += chunk.value.length;
+        x.loaded = loaded;
+        xfRefresh();
+      }
+      if (x.status !== '传输中') return;          // 已被取消
+      const blob = new Blob(parts);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = x.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      xfFinish(x.id, '已完成');
+    })
+    .catch(e => { if (x.status === '传输中') xfFinish(x.id, '失败', e.message); });
+}
+
+/* ---------- 传输管理面板 ---------- */
+function xfOpen() {
+  xfModalOpen = true;
+  showModal(`<div class="xf-panel" id="xf-panel"></div>`);
+  xfRender();
+}
+function xfStHtml(x) {
+  const cls = { '已完成': 'ok', '失败': 'fail', '已取消': 'q', '排队中': 'q', '传输中': 'run', '已交浏览器': 'ok' }[x.status] || '';
+  return `<span class="xf-st ${cls}">${x.status}</span>`;
+}
+function xfRender() {
+  const el = document.getElementById('xf-panel');
+  if (!el) return;
+  const act = XF.items.filter(x => ['排队中', '传输中'].includes(x.status));
+  const fmtSpd = s => s >= 100 ? s.toFixed(0) : s.toFixed(1);
+  el.innerHTML =
+    `<div style="display:flex;align-items:center;margin-bottom:12px">
+       <h3 style="margin:0;font-size:15px">传输管理</h3>
+       <span style="font-size:11px;color:var(--dim);margin-left:10px">上传并发 ${XF.MAXUP} · 下载并发 ${XF.MAXDOWN}</span>
+       <button class="btn" style="margin-left:auto" onclick="xfClearHist()">清空历史</button>
+     </div>
+     <div class="xf-sect">进行中 (${act.length})</div>
+     <div id="xf-active">` +
+     (act.length ? act.map(x => `
+        <div class="xf-item ${x.status === '已完成' ? 'done' : x.status === '失败' ? 'fail' : ''}">
+          <div class="xf-ic">${x.kind === 'up' ? '⬆' : '⬇'}</div>
+          <div class="xf-main">
+            <div class="xf-name" title="${esc(x.err || '')}">${esc(x.name)}</div>
+            <div class="xf-meta">
+              ${xfStHtml(x)}
+              <span>${fmtSize(x.size)}</span>
+              ${x.status === '传输中' && x.speed ? `<span>${fmtSpd(x.speed)} Mbps</span>` : ''}
+              ${x.status === '传输中' && x.size ? `<span>${(x.loaded / x.size * 100).toFixed(0)}%</span>` : ''}
+              ${x.err ? `<span style="color:var(--hot)">${esc(x.err)}</span>` : ''}
+            </div>
+            <div class="xf-bar"><div style="width:${x.size ? (x.loaded / x.size * 100).toFixed(1) : 0}%"></div></div>
+          </div>
+          <div class="xf-acts"><button class="iconbtn del" title="取消" onclick="xfCancel(${x.id})">✕</button></div>
+        </div>`).join('') : '<div style="color:var(--dim);font-size:13px;padding:6px 0">暂无进行中的传输</div>') +
+     `</div>
+     <div class="xf-sect" style="margin-top:16px">历史记录</div>
+     <div id="xf-hist">` +
+     (XF.hist.length ? XF.hist.map(h => `
+        <div class="xf-item ${h.status === '失败' ? 'fail' : 'done'}">
+          <div class="xf-ic">${h.kind === 'up' ? '⬆' : '⬇'}</div>
+          <div class="xf-main">
+            <div class="xf-name" title="${esc(h.dir || '')}">${esc(h.name)}</div>
+            <div class="xf-meta">
+              ${xfStHtml(Object.assign({}, h, { status: h.status }))}
+              <span>${fmtSize(h.size)}</span>
+              <span>${new Date(h.end).toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+              ${h.err ? `<span style="color:var(--hot)">${esc(h.err)}</span>` : ''}
+            </div>
+          </div>
+        </div>`).join('') : '<div style="color:var(--dim);font-size:13px;padding:6px 0">暂无历史记录</div>') +
+     `</div>`;
+}
+function xfClearHist() {
+  XF.hist = [];
+  try { localStorage.removeItem('xf_hist'); } catch (e) {}
+  xfRender();
+}
+
+/* ---------- 文件操作 ---------- */
+function download(name) { downloadQueue([name]); }
+function downloadQueue(names) {
+  names.forEach(n => {
+    const fi = (lastFiles || []).find(x => x.name === n);
+    const size = fi ? fi.size : null;
+    if (window.NetCheck && NetCheck.current() === 'v4' && size != null && size > 100 * 1024 * 1024) {
+      toast('IPv4 备用线路单文件上限 100MB: ' + n);
+      return;
+    }
+    if (size != null && size > XF.STREAM_MAX) {
+      // 超大文件 (>1GB): 交给浏览器原生下载 (无进度, 不占内存)
+      const o = xfAdd({ kind: 'down', name: n, size, dir: current });
+      xfFinish(o.id, '已交浏览器');
+      nativeDownload(n);
+      return;
+    }
+    xfAdd({ kind: 'down', name: n, size: size || 0, dir: current });
+  });
+  if (names.length > 1) xfOpen();
+}
+function nativeDownload(name) {
+  const a = document.createElement('a');
+  a.href = '/api/fs/download?path=' + encodeURIComponent(join(current, name));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function openFile(name) {
+  const e = extOf(name), p = join(current, name);
+  const url = '/api/fs/raw?path=' + encodeURIComponent(p);
+  const surl = '/api/fs/stream?path=' + encodeURIComponent(p);
+  if (IMG.has(e)) {
+    showModal(`<img src="${url}" onclick="closeModal()">`);
+  } else if (VID.has(e)) {
+    openVideoPlayer(join(current, name));
+  } else if (AUD.has(e)) {
+    showModal(`<audio src="${surl}" controls autoplay></audio>`);
+  } else if (PDF.has(e)) {
+    window.open(url, '_blank');
+  } else if (['.docx'].includes(e)) {
+    docxPreview(p, name);
+  } else if (['.xlsx', '.xlsm'].includes(e)) {
+    xlsxPreview(p, name);
+  } else if (['.pptx'].includes(e)) {
+    pptxPreview(p, name);
+  } else if (TXT.has(e)) {
+    textOpen(p, name, e);
+  } else {
+    download(name);
+  }
+}
+
+/* ---------- 在线编辑 (txt/md) 与文档预览 ---------- */
+const LIB = {};
+function loadLib(key, src) {
+  if (!LIB[key]) LIB[key] = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res;
+    s.onerror = () => { delete LIB[key]; rej(new Error('预览组件加载失败, 请检查网络后重试')); };
+    document.head.appendChild(s);
+  });
+  return LIB[key];
+}
+const EDIT_MAX = 2 * 1024 * 1024;          // 在线编辑上限 2MB
+
+async function textOpen(p, name, e) {
+  const fi = (lastFiles || []).find(x => x.name === name);
+  const size = fi ? fi.size : 0;
+  if (size > EDIT_MAX) {                    // 大文本: 保持只读预览
+    await rawTextModal(p, name);
+    return;
+  }
+  let text = '';
+  try {
+    const r = await fetch('/api/fs/raw?path=' + encodeURIComponent(p));
+    if (r.status === 401) { location.href = '/login'; return; }
+    if (!r.ok) throw new Error(r.statusText);
+    text = await r.text();
+  } catch (err) { toast('读取失败: ' + err.message); return; }
+  const isMd = e === '.md';
+  showModal(`<div class="ed-wrap">
+    <div class="ed-bar">
+      <span class="ed-name">${esc(name)}</span>
+      <span style="font-size:11px;color:var(--dim)">${fmtSize(size)} · UTF-8</span>
+      <span style="flex:1"></span>
+      ${isMd ? '<button class="btn" id="ed-toggle">预览</button>' : ''}
+      <button class="btn primary" id="ed-save">保存</button>
+      <button class="btn" onclick="closeModal()">关闭</button>
+    </div>
+    ${isMd ? '<div id="ed-prev" class="ed-prev" style="display:none"></div>' : ''}
+    <textarea id="ed-area" class="ed-area" spellcheck="false"></textarea>
+  </div>`);
+  const area = $('ed-area');
+  area.value = text;
+  let dirty = false;
+  area.oninput = () => { dirty = true; };
+  if (isMd) {
+    const prev = $('ed-prev');
+    $('ed-toggle').onclick = function () {
+      const showing = prev.style.display !== 'none';
+      if (showing) { prev.style.display = 'none'; area.style.display = 'flex'; this.textContent = '预览'; }
+      else { prev.innerHTML = mdRender(area.value); prev.style.display = 'block'; area.style.display = 'none'; this.textContent = '编辑'; }
+    };
+  }
+  $('ed-save').onclick = async () => {
+    this_ = $('ed-save'); this_.disabled = true; this_.textContent = '保存中…';
+    try {
+      const body = new Blob([area.value], { type: 'text/plain;charset=utf-8' });
+      const r = await fetch('/api/fs/upload?path=' + encodeURIComponent(parent(p)) +
+        '&name=' + encodeURIComponent(name) + '&overwrite=1',
+        { method: 'PUT', body, headers: { 'X-Client-Net': NetCheck.current() } });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      dirty = false;
+      toast('已保存');
+      this_.textContent = '保存'; this_.disabled = false;
+      if (current) load(current);              // 刷新文件时间
+    } catch (err) {
+      this_.disabled = false; this_.textContent = '保存';
+      toast('保存失败: ' + err.message);
+    }
+  };
+}
+async function rawTextModal(p, name) {
+  try {
+    const r = await fetch('/api/fs/raw?path=' + encodeURIComponent(p));
+    if (r.status === 401) { location.href = '/login'; return; }
+    if (!r.ok) throw new Error(r.statusText);
+    const t = await r.text();
+    showModal(`<pre>${esc(t.slice(0, 100000))}</pre>`);
+  } catch (e) { download(name); }
+}
+async function docxPreview(p, name) {
+  showModal(`<div class="docx-wrap" id="docx-prev">docx 组件加载中…</div>`);
+  try {
+    await loadLib('mammoth', '/static/lib/mammoth.browser.min.js');
+    const r = await fetch('/api/fs/raw?path=' + encodeURIComponent(p));
+    if (r.status === 401) { location.href = '/login'; return; }
+    const buf = await r.arrayBuffer();
+    const res = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+    document.getElementById('docx-prev').innerHTML =
+      '<div class="docx-doc">' + (res.value || '<p style="color:#94a3b8">空文档</p>') + '</div>';
+  } catch (e) { toast('预览失败: ' + e.message); closeModal(); download(name); }
+}
+async function xlsxPreview(p, name) {
+  showModal(`<div class="pptx-wrap" id="xlsx-prev">xlsx 组件加载中…</div>`);
+  try {
+    await loadLib('xlsx', '/static/lib/xlsx.mini.min.js');
+    const r = await fetch('/api/fs/raw?path=' + encodeURIComponent(p));
+    if (r.status === 401) { location.href = '/login'; return; }
+    const wb = window.XLSX.read(await r.arrayBuffer(), { type: 'array' });
+    const host = document.getElementById('xlsx-prev');
+    let cur = wb.SheetNames[0];
+    const draw = () => {
+      const html = window.XLSX.utils.sheet_to_html(wb.Sheets[cur]);
+      host.innerHTML = `<div class="xlsx-tabs">` + wb.SheetNames.map(n =>
+        `<button class="${n === cur ? 'on' : ''}" data-sh="${esc(n)}">${esc(n)}</button>`).join('') +
+        `</div><div class="xlsx-scroll">${html}</div>`;
+      host.querySelectorAll('[data-sh]').forEach(b => {
+        b.onclick = () => { cur = b.dataset.sh; draw(); };
+      });
+    };
+    draw();
+  } catch (e) { toast('预览失败: ' + e.message); closeModal(); download(name); }
+}
+async function pptxPreview(p, name) {
+  showModal(`<div class="pptx-wrap" id="pptx-prev">pptx 组件加载中…</div>`);
+  try {
+    await loadLib('fflate', '/static/lib/fflate.min.js');
+    const r = await fetch('/api/fs/raw?path=' + encodeURIComponent(p));
+    if (r.status === 401) { location.href = '/login'; return; }
+    const files = window.fflate.unzipSync(new Uint8Array(await r.arrayBuffer()));
+    const slides = Object.keys(files)
+      .filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+      .sort((a, b) => (+a.match(/\d+/g).pop()) - (+b.match(/\d+/g).pop()));
+    const host = document.getElementById('pptx-prev');
+    if (!slides.length) {
+      host.innerHTML = '<div style="color:#94a3b8">未解析到幻灯片内容</div>';
+      return;
+    }
+    host.innerHTML = '<div style="font-size:12px;color:#64748b;margin-bottom:10px">PPTX 文本简版预览（按幻灯片提取）</div>' +
+      slides.map((n, i) => {
+        const xml = new TextDecoder().decode(files[n]);
+        const texts = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map(m => m[1]).filter(t => t.trim());
+        return `<div class="pptx-slide"><div class="n">幻灯片 ${i + 1}</div>` +
+          (texts.length ? texts.map(t => `<div>${esc(t)}</div>`).join('') : '<div style="color:#94a3b8">(无文本)</div>') +
+          '</div>';
+      }).join('');
+  } catch (e) { toast('预览失败: ' + e.message); closeModal(); download(name); }
+}
+/* 极简 Markdown 渲染 (标题/列表/引用/代码/加粗/斜体/链接/分隔线) */
+function mdRender(t) {
+  const blocks = [];
+  t = t.replace(/```([\s\S]*?)```/g, (_, c) => {
+    blocks.push('<pre style="margin:.4em 0">' + esc(c) + '</pre>');
+    return '\u0000B' + (blocks.length - 1) + '\u0000';
+  });
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\*([^*]+)\*/g, '<i>$1</i>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent)">$1</a>');
+  let html = '', inUl = false, inOl = false;
+  const closeLists = () => {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+  };
+  for (const ln of t.split('\n')) {
+    if (/^\s*$/.test(ln)) { closeLists(); continue; }
+    const h = ln.match(/^(#{1,4})\s+(.*)/);
+    if (h) { closeLists(); html += `<h${h[1].length + 1} style="margin:.6em 0 .3em">${inline(h[2])}</h${h[1].length + 1}>`; continue; }
+    if (/^(-{3,}|\*{3,})\s*$/.test(ln)) { closeLists(); html += '<hr>'; continue; }
+    if (/^>\s?/.test(ln)) {
+      closeLists();
+      html += `<blockquote style="border-left:3px solid var(--line);margin:.3em 0;padding:.1em .9em;color:var(--dim)">${inline(ln.replace(/^>\s?/, ''))}</blockquote>`;
+      continue;
+    }
+    const ul = ln.match(/^\s*[-*+]\s+(.*)/);
+    if (ul) { if (!inUl) { closeLists(); html += '<ul style="margin:.3em 0;padding-left:1.4em">'; inUl = true; } html += '<li>' + inline(ul[1]) + '</li>'; continue; }
+    const ol = ln.match(/^\s*\d+\.\s+(.*)/);
+    if (ol) { if (!inOl) { closeLists(); html += '<ol style="margin:.3em 0;padding-left:1.4em">'; inOl = true; } html += '<li>' + inline(ol[1]) + '</li>'; continue; }
+    closeLists();
+    html += '<p style="margin:.35em 0">' + inline(ln) + '</p>';
+  }
+  closeLists();
+  return html.replace(/\u0000B(\d+)\u0000/g, (_, i) => blocks[+i]);
+}
+function showModal(html) {
+  $('m-body').innerHTML = `<button class="m-close" onclick="closeModal()">✕</button>` + html;
+  $('modal').classList.add('show');
+}
+
+function closeModal() {
+  $('modal').classList.remove('show');
+  $('m-body').innerHTML = '';
+  xfModalOpen = false;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); dlgCancel(); } });
+
+/* ---------- 链接分享 ---------- */
+function copyText(t) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(t).then(() => toast('已复制')).catch(() => copyFallback(t));
+  } else copyFallback(t);
+}
+function copyFallback(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('已复制'); } catch (e) { toast('复制失败，请手动选择'); }
+  ta.remove();
+}
+function shareDlg(name) {
+  window.__sharePath = join(current, name);
+  showModal(`<div style="min-width:300px;text-align:left">
+    <h3 style="margin:0 0 14px;font-size:15px">分享「${esc(name)}」</h3>
+    <div style="margin-bottom:10px">
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">有效期</div>
+      <select id="sh-days" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:14px">
+        <option value="1">1 天</option>
+        <option value="7" selected>7 天</option>
+        <option value="30">30 天</option>
+        <option value="0">永久</option>
+      </select>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">提取码（可选）</div>
+      <input id="sh-pw" style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);font-size:14px;box-sizing:border-box" placeholder="留空则无需提取码">
+    </div>
+    <button style="width:100%;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--on-accent);font-weight:600;cursor:pointer;font-size:14px" onclick="doShare()">生成链接</button>
+    <div id="sh-result"></div>
+  </div>`);
+}
+async function doShare() {
+  try {
+    const d = await api('/api/share/create', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path: window.__sharePath, days: +document.getElementById('sh-days').value,
+                             password: document.getElementById('sh-pw').value.trim() }) });
+    const link = location.origin + '/s/' + d.token;
+    document.getElementById('sh-result').innerHTML = `
+      <div style="margin-top:14px;padding:10px;background:var(--card2);border-radius:10px;font-size:12px;word-break:break-all;color:var(--text)">${link}</div>
+      <button style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--text);cursor:pointer;font-size:13px" onclick="copyText(location.origin + '/s/${d.token}')">复制链接</button>
+      <div style="font-size:11px;color:var(--dim);margin-top:8px">已生成${d.days === 0 ? '永久' : d.days + ' 天'}有效的链接${d.has_password ? '（含提取码）' : ''}，可在「我的分享」中管理</div>`;
+  } catch (e) { toast('生成失败: ' + e.message); }
+}
+async function sharesDlg() {
+  showModal(`<div style="min-width:320px;text-align:left">
+    <h3 style="margin:0 0 14px;font-size:15px">我的分享</h3>
+    <div id="sh-list"><div style="color:var(--dim);font-size:13px">加载中…</div></div>
+  </div>`);
+  const d = await api('/api/shares');
+  const el = document.getElementById('sh-list');
+  if (!d.shares.length) { el.innerHTML = '<div style="color:var(--dim);font-size:13px">还没有创建过分享，在文件上点 🔗 即可生成</div>'; return; }
+  el.innerHTML = d.shares.map(s => {
+    const exp = s.expired ? '<span style="color:var(--hot)">已过期</span>'
+      : (s.expires ? '有效期至 ' + new Date(s.expires*1000).toLocaleString('zh-CN',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '永久有效');
+    return `<div style="padding:10px;background:var(--card2);border-radius:10px;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.label)}</div>
+      <div style="font-size:11px;color:var(--dim);margin:4px 0 8px">
+        ${exp} · 已下载 ${s.downloads} 次${s.has_password ? ' · 有提取码' : ''}
+      </div>
+      <div style="display:flex;gap:6px">
+        ${s.expired ? '' : `<button class="btn" style="flex:1;justify-content:center" onclick="copyText(location.origin + '/s/${s.token}')">复制链接</button>`}
+        <button class="btn danger" style="flex:1;justify-content:center" data-sid="${s.id}">作废</button>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-sid]').forEach(b => {
+    b.onclick = async () => {
+      await api('/api/share/revoke', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: +b.dataset.sid }) });
+      toast('已作废');
+      sharesDlg();
+    };
+  });
+}
+
+function mkdirDlg() {
+  dlg('新建文件夹', '', true, '新建文件夹', v => {
+    if (!v) return;
+    api('/api/fs/mkdir', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({path: current, name: v}) })
+      .then(() => load(current)).catch(e => toast('失败: ' + e.message));
+  });
+}
+function renameDlg(oldName) {
+  dlg('重命名', '', true, oldName, v => {
+    if (!v || v === oldName) return;
+    api('/api/fs/rename', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({path: join(current, oldName), new_name: v}) })
+      .then(() => load(current)).catch(e => toast('失败: ' + e.message));
+  });
+}
+function deleteDlg(name, isDir) {
+  dlg('确认删除', (isDir ? '文件夹「' : '文件「') + name + '」将被永久删除，无法恢复！', false, '', () => {
+    api('/api/fs/delete', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({path: join(current, name)}) })
+      .then(() => { toast('已删除'); load(current); })
+      .catch(e => toast('失败: ' + e.message));
+  });
+}
+
+/* ---------- 上传 (入队) ---------- */
+function uploadDlg() { $('fileinput').click(); }
+$('fileinput').onchange = e => { queueUploads([...e.target.files]); e.target.value = ''; };
+
+function queueUploads(files) {
+  if (!current) { toast('请先进入某个磁盘目录'); return; }
+  const v4 = window.NetCheck && NetCheck.current() === 'v4';
+  files.forEach(f => {
+    if (v4 && f.size > 100 * 1024 * 1024) {
+      toast('IPv4 备用线路单文件上限 100MB: ' + f.name);
+      return;
+    }
+    xfAdd({ kind: 'up', name: f.name, size: f.size, dir: current, file: f });
+  });
+  if (files.length > 1) xfOpen();
+}
+
+/* 拖拽上传 */
+let dragDepth = 0;
+document.addEventListener('dragenter', e => {
+  if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) {
+    dragDepth++; $('dropzone').classList.add('show');
+  }
+});
+document.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) $('dropzone').classList.remove('show');
+});
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('dropzone').classList.remove('show');
+  if (!current) { toast('请先进入某个磁盘目录'); return; }
+  uploadFiles([...e.dataTransfer.files]);
+});
+
+/* ---------- 启动 (权限门: 无「全盘资源」权限不加载) ---------- */
+(async () => {
+  if (!(await loadMe())) { location.href = '/login'; return; }
+  document.body.classList.remove('boot-guard');
+  if (!hasPerm('files')) {
+    document.querySelector('.wrap').innerHTML =
+      '<div style="text-align:center;padding:90px 0;font-size:14px;color:var(--dim)">没有「全盘资源」权限，无法使用文件管理</div>';
+    return;
+  }
+  window.onhashchange = () => {
+    const p = decodeURIComponent(location.hash.slice(1));
+    if (p && p !== current) load(p);
+  };
+  if (location.hash.length > 1) {
+    load(decodeURIComponent(location.hash.slice(1)));
+  } else {
+    loadRoots();
+  }
+})();
+</script>
+</body>
+</html>

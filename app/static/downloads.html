@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>下载机</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/common.css">
+<script src="/static/theme.js"></script>
+<script src="/static/common.js"></script>
+<script src="/static/netcheck.js"></script>
+<style>
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 16px 22px 50px; }
+
+  .addcard { background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+             padding: 18px; margin-bottom: 22px; }
+  .addcard textarea { width: 100%; min-height: 64px; padding: 11px 12px; border-radius: 10px;
+                      border: 1px solid var(--line); background: var(--card2); color: var(--text);
+                      font-size: 13px; outline: none; resize: vertical; box-sizing: border-box; }
+  .addcard textarea:focus { border-color: var(--accent); }
+  .addrow { display: flex; gap: 10px; margin-top: 10px; }
+  .addrow input { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+                  background: var(--card2); color: var(--text); font-size: 13px; outline: none; }
+  .addrow input:focus { border-color: var(--accent); }
+  .addrow button { padding: 0 22px; border: none; border-radius: 10px;
+                   background: linear-gradient(135deg, var(--accent), var(--accent2));
+                   color: var(--on-accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .hint { font-size: 11px; color: var(--dim); margin-top: 8px; }
+
+  a.t-del { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+  .task { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 14px 16px; margin-bottom: 10px; }
+  .task .t-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .task .t-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+                  white-space: nowrap; flex: 1; }
+  .task .t-speed { font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .task .t-bar { height: 6px; border-radius: 3px; background: var(--inset); overflow: hidden; margin: 10px 0 6px; }
+  .task .t-bar div { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .4s; }
+  .task.done .t-bar div { background: var(--ok); }
+  .task.err .t-bar div { background: var(--hot); }
+  .task .t-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); }
+  .task .t-del { border: none; background: transparent; color: var(--dim); cursor: pointer; font-size: 12px; }
+  .task .t-del:hover { color: var(--hot); }
+  .st-badge { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--card2); color: var(--dim); }
+  .st-badge.active { background: var(--accent-soft); color: var(--accent); }
+  .st-badge.done { background: var(--ok-soft); color: var(--ok); }
+  .st-badge.err { background: var(--hot-soft); color: var(--hot); }
+  body.boot-guard .wrap { display: none; }   /* 权限确认前隐藏内容, 防无权限用户看到一闪而过 */
+</style>
+</head>
+<body class="boot-guard">
+
+<header class="topbar">
+  <div class="brand">下载机</div>
+  <nav class="nav">
+    <a href="/">中控</a>
+    <a href="/monitor">监控</a>
+    <a href="/media">影视</a>
+    <a href="/files">文件</a>
+    <a href="/downloads" class="active">下载</a>
+    <a href="/games">游戏</a>
+  </nav>
+  <div class="tb-actions">
+    <button class="theme-btn" onclick="toggleTheme()" title="切换日间/夜间模式">
+      <span class="i-moon">🌙</span><span class="i-sun">☀️</span>
+    </button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="addcard">
+    <textarea id="url" placeholder="粘贴下载链接（HTTP / FTP / 磁力链 magnet:…），多行可同时添加多个"></textarea>
+    <div class="addrow">
+      <input id="dir" placeholder="目标目录">
+      <button onclick="addTask()">添加任务</button>
+    </div>
+    <div class="hint">任务直接下载到服务器磁盘，完成后可在「文件」中查看 · BT 任务做种已关闭</div>
+  </div>
+
+  <div class="sec">任务列表 <span class="n" id="sum"></span><span class="spacer"></span>
+    <button id="clearbtn" style="display:none" onclick="clearDone()">清空已完成</button>
+  </div>
+  <div id="list"><div class="empty">加载中…</div></div>
+</div>
+
+<script>
+const fmtSpeed = b => b > 0 ? fmtSize(b) + '/s' : '';
+const fmtEta = s => {
+  if (!isFinite(s) || s <= 0) return '';
+  const m = Math.ceil(s / 60);
+  if (m < 60) return m + ' 分钟';
+  return Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分';
+};
+const ST_MAP = { active: '下载中', waiting: '排队中', paused: '已暂停',
+                 complete: '已完成', error: '出错', removed: '已移除' };
+const ST_CLS = { active: 'active', complete: 'done', error: 'err' };
+
+let dir = '';
+let lastJson = '';
+
+async function addTask() {
+  const urls = $('url').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!urls.length) { alert('请先粘贴下载链接'); return; }
+  try {
+    for (const u of urls) {
+      await api('/api/dl/add', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ url: u, dir: $('dir').value.trim() || dir }) });
+    }
+    $('url').value = '';
+    refresh();
+  } catch (e) { alert('添加失败: ' + e.message); }
+}
+
+async function removeTask(gid, ev) {
+  ev.stopPropagation();
+  try { await api('/api/dl/remove', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ gid }) }); refresh(); }
+  catch (e) { alert('移除失败: ' + e.message); }
+}
+
+async function pauseTask(gid) {
+  try { await api('/api/dl/pause', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ gid }) }); refresh(); }
+  catch (e) { alert('暂停失败: ' + e.message); }
+}
+
+async function resumeTask(gid) {
+  try { await api('/api/dl/resume', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ gid }) }); refresh(); }
+  catch (e) { alert('继续失败: ' + e.message); }
+}
+
+async function clearDone() {
+  try {
+    const r = await api('/api/dl/clear', { method: 'POST' });
+    refresh();
+  } catch (e) { alert('清空失败: ' + e.message); }
+}
+
+function render(items) {
+  const stopped = items.filter(t => ['complete', 'error', 'removed'].includes(t.status)).length;
+  $('clearbtn').style.display = stopped ? 'inline-block' : 'none';
+  $('sum').textContent = items.length ? items.length + ' 个任务' : '';
+  if (!items.length) { $('list').innerHTML = '<div class="empty">暂无任务，粘贴链接开始下载</div>'; return; }
+  $('list').innerHTML = items.map(t => {
+    const pct = t.total ? Math.min(100, t.done / t.total * 100) : 0;
+    const cls = ST_CLS[t.status] || '';
+    const isMeta = t.name.startsWith('[METADATA]');
+    const dispName = isMeta ? '正在解析磁力链接…' : t.name;
+    const stText = isMeta ? '解析中' : (t.status === 'error' ? (ST_MAP.error + (t.error ? ': ' + t.error : '')) : ST_MAP[t.status] || t.status);
+    const speed = t.status === 'active' && !isMeta ? fmtSpeed(t.speed) : '';
+    const eta = (t.status === 'active' && t.speed > 0 && t.total > t.done)
+      ? ' · 剩余 ' + fmtEta((t.total - t.done) / t.speed) : '';
+    const metaLine = isMeta
+      ? '获取种子元数据中… 若长时间无进展，可移除后改用带 tracker 的链接或种子文件'
+      : `${fmtSize(t.done)} / ${fmtSize(t.total)}${eta}`;
+    const btns = [];
+    if (t.status === 'active') btns.push(`<button class="t-del" data-gid="${t.gid}" data-act="pause" title="暂停"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>`);
+    if (t.status === 'paused') btns.push(`<button class="t-del" data-gid="${t.gid}" data-act="resume" title="继续"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M7 4l14 8-14 8z"/></svg></button>`);
+    if (t.status === 'complete' && t.path) btns.push(`<a class="t-del" href="/files#${encodeURIComponent(t.path.replace(/[^\\]+$/, ''))}" title="在文件管理中查看">打开</a>`);
+    btns.push(`<button class="t-del" data-gid="${t.gid}" title="移除">✕</button>`);
+    return `<div class="task ${cls}">
+      <div class="t-top">
+        <div class="t-name" title="${t.name.replace(/"/g,'&quot;')}">${dispName}</div>
+        <span class="st-badge ${cls}">${stText}</span>
+        ${btns.join('')}
+      </div>
+      <div class="t-bar"><div style="width:${t.status === 'complete' ? 100 : pct}%"></div></div>
+      <div class="t-meta">
+        <span>${metaLine}</span>
+        <span class="t-speed">${speed}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.t-del[data-gid]').forEach(b => {
+    b.onclick = ev => {
+      const act = b.dataset.act || 'remove';
+      if (act === 'pause') pauseTask(b.dataset.gid);
+      else if (act === 'resume') resumeTask(b.dataset.gid);
+      else removeTask(b.dataset.gid, ev);
+    };
+  });
+}
+
+async function refresh() {
+  try {
+    const d = await api('/api/dl/list');
+    dir = d.dir || dir;
+    if (!$('dir').value) $('dir').value = dir;
+    const sig = JSON.stringify(d.items);
+    if (sig !== lastJson) { lastJson = sig; render(d.items); }
+    else { // 速度/进度变化也要更新, 但不重建 DOM
+      document.querySelectorAll('.task').forEach((el, i) => {
+        const t = d.items[i]; if (!t) return;
+        const bar = el.querySelector('.t-bar div');
+        if (bar) bar.style.width = (t.total ? Math.min(100, t.done / t.total * 100) : 0) + '%';
+        const meta = el.querySelector('.t-meta span');
+        if (meta) meta.textContent = fmtSize(t.done) + ' / ' + fmtSize(t.total);
+        const sp = el.querySelector('.t-speed');
+        if (sp) sp.textContent = t.status === 'active' ? fmtSpeed(t.speed) : '';
+      });
+    }
+  } catch (e) {
+    $('list').innerHTML = '<div class="empty">' + e.message + '</div>';
+  }
+}
+
+fetch('/api/current').then(r => { if (r.status === 401) location.href = '/login'; });
+/* ---------- 启动 (权限门: 无「下载管理」权限不加载) ---------- */
+(async () => {
+  if (!(await loadMe())) { location.href = '/login'; return; }
+  document.body.classList.remove('boot-guard');
+  if (!hasPerm('downloads')) {
+    document.querySelector('.wrap').innerHTML =
+      '<div style="text-align:center;padding:90px 0;font-size:14px;color:var(--dim)">没有「下载管理」权限，无法使用下载机</div>';
+    return;
+  }
+  refresh();
+  setInterval(refresh, 2000);
+})();
+</script>
+</body>
+</html>

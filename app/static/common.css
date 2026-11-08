@@ -1,0 +1,40 @@
+/* ============================================================
+   公共组件样式: 各页面共享 (页面内 <style> 在其后加载, 可覆盖)
+   主题变量在 theme.css, 本文件只放跨页面复用的组件
+   ============================================================ */
+a { text-decoration: none; color: inherit; }
+
+.brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
+.brand .meta { font-size: 12px; color: var(--dim); font-weight: 400; }
+
+/* 区块标题 (页面有变体时可局部覆盖) */
+.sec { font-size: 14px; font-weight: 700; margin: 24px 0 12px; display: flex; align-items: center; gap: 10px; }
+.sec .n { font-size: 12px; color: var(--dim); font-weight: 400; }
+.sec .spacer { flex: 1; }
+.sec button { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line);
+              background: var(--card); color: var(--dim); font-size: 12px; cursor: pointer; }
+.sec button:hover { color: var(--text); border-color: var(--accent); }
+
+/* 空态提示 */
+.empty { text-align: center; color: var(--dim); padding: 40px 0; font-size: 13px; }
+
+/* 弹窗 (设置/配置类); 宽度等细节页面可覆盖 */
+.setdlg { position: fixed; inset: 0; background: rgba(8,15,28,.55); backdrop-filter: blur(6px); z-index: 300;
+          display: none; align-items: center; justify-content: center; padding: 20px; }
+.setdlg.show { display: flex; animation: dlgIn .18s ease; }
+.set-box { background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+           padding: 24px; width: 480px; max-width: 94vw; max-height: 88vh; overflow: auto;
+           box-shadow: var(--shadow-lg); }
+.set-box h3 { font-size: 16px; margin-bottom: 16px; }
+.set-acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.set-acts button { padding: 9px 20px; border-radius: 10px; font-size: 13px; cursor: pointer;
+                   border: 1px solid var(--line); background: var(--card2); color: var(--text); }
+.set-acts button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+@keyframes dlgIn { from { opacity: 0 } to { opacity: 1 } }
+
+/* 轻提示 (页面需有 <div id="toast"> 元素) */
+.toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+         background: var(--card); border: 1px solid var(--line); color: var(--text);
+         padding: 10px 20px; border-radius: 12px; font-size: 13px; z-index: 400;
+         opacity: 0; transition: .25s; pointer-events: none; box-shadow: var(--shadow-lg); }
+.toast.show { opacity: 1; }

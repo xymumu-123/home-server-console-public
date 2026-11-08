@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>服务器状态监控</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/common.css">
+<script src="/static/theme.js"></script>
+<script src="/static/common.js"></script>
+<script src="/static/netcheck.js"></script>
+<script src="/static/chart.umd.js"></script>
+<style>
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 14px 22px 40px; }
+  .brand .cpu { font-size: 12px; color: var(--dim); font-weight: 400; }
+  .statusline { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+  .ok { background: var(--ok); } .bad { background: var(--hot); }
+
+  /* 一行实时状态 */
+  .statline {
+    display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline;
+    font-size: 13px; color: var(--dim); margin-bottom: 14px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px;
+  }
+  .statline b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .statline b.warn { color: var(--warn); } .statline b.hot { color: var(--hot); }
+
+  .layout { display: grid; grid-template-columns: 290px 1fr; gap: 14px; align-items: start; }
+  .card {
+    background: linear-gradient(160deg, var(--card2), var(--card));
+    border: 1px solid var(--line); border-radius: 16px; padding: 16px;
+  }
+
+  /* 左列英雄卡 */
+  .hero-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .hero-col .card { padding: 14px; }
+  .hero-wide { grid-column: 1 / -1; }
+  .h-label { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
+  .ringwrap { position: relative; width: 116px; margin: 0 auto; }
+  .ringwrap svg { display: block; width: 100%; }
+  .ring-bg { fill: none; stroke: var(--inset); stroke-width: 9; }
+  .ring-fg {
+    fill: none; stroke: var(--accent); stroke-width: 9; stroke-linecap: round;
+    stroke-dasharray: 339.3; stroke-dashoffset: 339.3;
+    transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset .6s, stroke .6s;
+  }
+  .ring-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .ring-num span { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ring-num small { font-size: 13px; color: var(--dim); margin-top: 8px; }
+  .h-sub { font-size: 11px; color: var(--dim); text-align: center; margin-top: 8px; }
+  .h-big { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .h-big small { font-size: 14px; color: var(--dim); font-weight: 400; }
+  .h-row { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 0; }
+  .h-row .k { color: var(--dim); }
+  .bar-wrap { background: var(--inset); border-radius: 5px; height: 8px; overflow: hidden; margin: 8px 0 4px; }
+  .bar { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .6s; }
+  .bar.warn { background: linear-gradient(90deg, var(--warn), var(--hot)); }
+
+  /* 右列 */
+  .main-col { display: grid; gap: 14px; min-width: 0; }
+  .chart-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .chart-head h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+  .range-tabs { display: flex; gap: 4px; background: var(--inset); border-radius: 10px; padding: 3px; }
+  .range-tabs button {
+    border: none; background: transparent; color: var(--dim); font-size: 12px;
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: .15s;
+  }
+  .range-tabs button:hover { color: var(--text); }
+  .range-tabs button.on { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: var(--on-accent); font-weight: 600; }
+  .chart-box { position: relative; }
+  .chart-box.big { height: 300px; }
+  .chart-box.mid { height: 190px; }
+  details.grp > summary {
+    cursor: pointer; list-style: none; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px; user-select: none;
+  }
+  details.grp > summary::-webkit-details-marker { display: none; }
+  details.grp > summary::after { content: '▾'; color: var(--dim); margin-left: auto; transition: .2s; }
+  details.grp:not([open]) > summary::after { transform: rotate(-90deg); }
+  details.grp[open] > summary { margin-bottom: 12px; }
+  .grp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grp-body .solo { grid-column: 1 / -1; }
+
+  /* 存储 */
+  .diskrow { display: grid; grid-template-columns: 44px 1fr 150px 46px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+  .diskrow:last-child { border-bottom: none; }
+  .diskrow .dname { font-weight: 600; }
+  .diskrow .dsize { color: var(--dim); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .diskrow .dpct { text-align: right; font-variant-numeric: tabular-nums; }
+  .dpct.warn { color: var(--warn); } .dpct.hot { color: var(--hot); }
+  @media (max-width: 640px) { .diskrow { grid-template-columns: 40px 1fr 90px 42px; } }
+
+  /* 进程 */
+  .procs { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .procs td, .procs th { padding: 7px 6px; text-align: left; border-bottom: 1px solid var(--line-soft); }
+  .procs th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  .procs tr:last-child td { border-bottom: none; }
+  .procs .pname { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .procs .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* 硬盘健康 */
+  .dh-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .dh-table td, .dh-table th { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--line-soft); }
+  .dh-table th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  .dh-table tr:last-child td { border-bottom: none; }
+  .dh-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .dh-table .ok { color: var(--text); }
+  .dh-table .warn { color: var(--hot); font-weight: 600; }
+  .dh-sum { color: var(--dim); font-size: 12px; font-weight: 400; margin-left: 8px; }
+  .dh-sum .hot { color: var(--hot); }
+  .dh-note { font-size: 11px; color: var(--dim); margin-top: 10px; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .hero-col { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 560px) {
+    .hero-col { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .grp-body { grid-template-columns: 1fr; }
+    .chart-box.big { height: 220px; }
+    .statusline { order: 3; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">家庭服务器<span class="cpu" id="cpu-name"></span></div>
+  <div class="statusline">
+    <span id="lhm-status"><span class="dot bad"></span>传感器连接中…</span>
+    <span>· 运行 <span id="uptime">-</span></span>
+    <span>· <span id="updated">-</span></span>
+  </div>
+  <nav class="nav">
+    <a href="/">中控</a>
+    <a href="/monitor" class="active">监控</a>
+    <a href="/media">影视</a>
+    <a href="/files">文件</a>
+    <a href="/downloads">下载</a>
+    <a href="/games">游戏</a>
+  </nav>
+  <div class="tb-actions">
+    <button class="theme-btn" onclick="toggleTheme()" title="切换日间/夜间模式">
+      <span class="i-moon">🌙</span><span class="i-sun">☀️</span>
+    </button>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="statline">
+  <span>CPU <b id="s-cpu">-</b></span>
+  <span>内存 <b id="s-mem">-</b></span>
+  <span>CPU温度 <b id="s-cput">-</b></span>
+  <span>主板 <b id="s-mbt">-</b></span>
+  <span>功率 <b id="s-pw">-</b></span>
+  <span>↑ <b id="s-up">-</b></span>
+  <span>↓ <b id="s-dn">-</b></span>
+</div>
+
+<div class="layout">
+  <!-- 左列: 英雄卡 -->
+  <section class="hero-col">
+    <div class="card hero-wide">
+      <div class="ringwrap">
+        <svg viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="54" class="ring-bg"/>
+          <circle cx="60" cy="60" r="54" class="ring-fg" id="ring-cpu"/>
+        </svg>
+        <div class="ring-num"><span id="v-cpu">-</span><small>%</small></div>
+      </div>
+      <div class="h-sub" id="s-cpu-sub">CPU 占用</div>
+    </div>
+    <div class="card">
+      <div class="h-label">内存占用</div>
+      <div class="h-big" id="v-mem">-<small>%</small></div>
+      <div class="bar-wrap"><div class="bar" id="mem-bar" style="width:0%"></div></div>
+      <div class="h-row"><span class="k" id="s-mem-detail">-</span></div>
+      <div class="h-row"><span class="k">交换分区</span><span id="s-swap">-</span></div>
+    </div>
+    <div class="card">
+      <div class="h-label">温度</div>
+      <div class="h-row"><span class="k">CPU</span><b id="v-cput">-</b></div>
+      <div class="h-row"><span class="k">主板</span><b id="v-mbt">-</b></div>
+      <div class="h-sub" id="temp-note">核心封装 / 主板热区</div>
+    </div>
+    <div class="card hero-wide">
+      <div class="h-label">功率与电量</div>
+      <div class="h-big" id="v-pw">-<small> W</small></div>
+      <div class="h-row"><span class="k">CPU 实测</span><span id="s-cpupw">-</span></div>
+      <div class="h-row"><span class="k">累计耗电</span><span id="v-kwh">-</span></div>
+    </div>
+  </section>
+
+  <!-- 右列: 图表与详情 -->
+  <section class="main-col">
+    <div class="card">
+      <div class="chart-head">
+        <h2>CPU / 内存占用</h2>
+        <div class="range-tabs" id="range-tabs"></div>
+      </div>
+      <div class="chart-box big"><canvas id="c-main"></canvas></div>
+    </div>
+
+    <details class="card grp" open>
+      <summary>温度与功耗</summary>
+      <div class="grp-body">
+        <div class="chart-box mid"><canvas id="c-temp"></canvas></div>
+        <div class="chart-box mid"><canvas id="c-pw"></canvas></div>
+      </div>
+    </details>
+
+    <details class="card grp" open>
+      <summary>网络速率</summary>
+      <div class="grp-body">
+        <div class="chart-box mid solo"><canvas id="c-net"></canvas></div>
+      </div>
+    </details>
+
+    <details class="card grp" open>
+      <summary>存储</summary>
+      <div id="disk-rows"></div>
+    </details>
+
+    <details class="card grp" id="dh-grp">
+      <summary>硬盘健康 <span class="dh-sum" id="dh-sum">检测中…</span></summary>
+      <div class="grp-body">
+        <div style="overflow-x:auto">
+        <table class="dh-table" style="min-width:560px">
+          <thead><tr>
+            <th>型号</th><th>盘符</th><th>类型</th>
+            <th style="text-align:right">温度</th>
+            <th style="text-align:right">通电时长</th>
+            <th style="text-align:right">累计读取</th>
+            <th style="text-align:right">累计写入</th>
+            <th>健康状态</th>
+          </tr></thead>
+          <tbody id="dh-rows"><tr><td colspan="8" class="h-sub" style="text-align:center;padding:14px">暂无数据</td></tr></tbody>
+        </table>
+        </div>
+        <div class="dh-note">数据来自 SMART 与硬件传感器，随监控自动刷新；USB 外置盒部分信息可能不可读（显示 —）</div>
+      </div>
+    </details>
+
+    <details class="card grp" open>
+      <summary>进程 TOP（按 CPU）</summary>
+      <table class="procs">
+        <thead><tr><th>进程</th><th style="text-align:right">CPU</th><th style="text-align:right">内存</th></tr></thead>
+        <tbody id="proc-rows"><tr><td colspan="3" class="h-sub" style="text-align:center;padding:14px">采集中…</td></tr></tbody>
+      </table>
+    </details>
+  </section>
+</div>
+</div>
+
+<script>
+const fmtBytes = b => {
+  if (b == null) return '-';
+  const u = ['B/s','KB/s','MB/s','GB/s']; let i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(b >= 100 || i === 0 ? 0 : 1) + ' ' + u[i];
+};
+const fmtUptime = s => {
+  const d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60);
+  return (d ? d + '天' : '') + h + '小时' + m + '分';
+};
+const tempClass = t => t == null ? '' : t >= 92 ? 'hot' : t >= 85 ? 'warn' : '';
+const tempText = t => t == null ? '—' : t.toFixed(0) + '°C';
+const setTC = (el, t) => { el.textContent = tempText(t); el.className = tempClass(t); };
+
+/* ---------- 图表 ---------- */
+function applyChartTheme() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  Chart.defaults.color = dark ? '#8fa0bc' : '#64748b';
+  Chart.defaults.borderColor = dark ? '#26324d' : '#e4e9f2';
+}
+applyChartTheme();
+document.addEventListener('themechange', () => {
+  applyChartTheme();
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const tip = {
+    backgroundColor: dark ? '#1b2540' : '#ffffff',
+    borderColor: dark ? '#26324d' : '#e4e9f2',
+    titleColor: dark ? '#e5ecf8' : '#1e293b',
+    bodyColor: dark ? '#c7d2e8' : '#475569',
+  };
+  [cMain, cTemp, cPw, cNet].forEach(c => {
+    c.options.scales.x.ticks.color = Chart.defaults.color;
+    c.options.scales.y.ticks.color = Chart.defaults.color;
+    c.options.scales.y.grid.color = Chart.defaults.borderColor;
+    c.options.plugins.legend.labels.color = Chart.defaults.color;
+    Object.assign(c.options.plugins.tooltip, tip);
+    c.update('none');
+  });
+});
+Chart.defaults.font.family = 'system-ui, "Microsoft YaHei", sans-serif';
+
+/* 色板约定: 蓝紫=负载类指标, 橙=温度, 琥珀=功耗; 绿色只表正常状态、红色只表危险, 不用作数据线 */
+const PALETTE = { cpu:'#38bdf8', mem:'#818cf8', cput:'#fb923c', mbt:'#fdba74',
+                  cpupw:'#fbbf24', estpw:'#fcd34d', up:'#38bdf8', down:'#818cf8' };
+
+/* 时间范围 (须在图表构造前声明, xTick 回调构造期就会执行) */
+const RANGES = [[60,'1时'],[360,'6时'],[1440,'24时'],[10080,'7天'],[43200,'30天'],[525600,'1年']];
+let rangeMin = +(localStorage.getItem('range') || 1440);
+let lastHistoryLoad = 0;
+
+function gradFill(color) {
+  return ctx => {
+    const { chart } = ctx; const { ctx: c, chartArea } = chart;
+    if (!chartArea) return 'transparent';
+    const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    g.addColorStop(0, color + '1a'); g.addColorStop(1, color + '00');
+    return g;
+  };
+}
+function mkArea(id, datasets, yFmt) {
+  datasets.forEach(ds => { ds.fill = true; ds.backgroundColor = gradFill(ds._color);
+                           ds.borderWidth = 1.8; ds.pointRadius = 0; ds.tension = .25; });
+  return new Chart($(id), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false, parsing: false,
+      interaction: { mode: 'nearest', intersect: false },
+      scales: {
+        x: { type: 'linear', ticks: { maxTicksLimit: 7, callback: xTick }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { maxTicksLimit: 5, callback: yFmt } }
+      },
+      plugins: {
+        legend: { labels: { boxWidth: 10, boxHeight: 2, usePointStyle: true, pointStyle: 'line' } },
+        tooltip: {
+          backgroundColor: '#1b2540', borderColor: '#26324d', borderWidth: 1,
+          titleColor: '#e5ecf8', bodyColor: '#c7d2e8', padding: 10, cornerRadius: 10,
+          callbacks: { title: it => new Date(it[0].parsed.x*1000).toLocaleString('zh-CN', {hour12:false}) }
+        }
+      }
+    }
+  });
+}
+function xTick(v) {
+  const d = new Date(v*1000);
+  const p2 = n => n.toString().padStart(2,'0');
+  if (rangeMin <= 1440) return p2(d.getHours()) + ':' + p2(d.getMinutes());
+  if (rangeMin <= 43200) return (d.getMonth()+1) + '/' + d.getDate();
+  return (d.getMonth()+1) + '月';
+}
+const dsOf = (label, color, extra) => Object.assign(
+  { label, data: [], borderColor: color, _color: color, spanGaps: true }, extra || {});
+
+const cMain = mkArea('c-main', [
+  dsOf('CPU%', PALETTE.cpu), dsOf('内存%', PALETTE.mem)
+], v => v + '%');
+const cTemp = mkArea('c-temp', [
+  dsOf('CPU温度', PALETTE.cput), dsOf('主板温度', PALETTE.mbt)
+], v => v + '°');
+const cPw = mkArea('c-pw', [
+  dsOf('CPU功耗', PALETTE.cpupw),
+  dsOf('整机估算', PALETTE.estpw, { borderDash: [5,3] })
+], v => v + 'W');
+const cNet = mkArea('c-net', [
+  dsOf('上传', PALETTE.up), dsOf('下载', PALETTE.down)
+], fmtBytes);
+
+function fill(chart, rows, idx) {
+  chart.data.datasets.forEach((ds, i) => {
+    ds.data = rows.filter(r => r[idx[i]] != null).map(r => ({ x: r[0], y: r[idx[i]] }));
+  });
+  chart.update();
+}
+
+/* ---------- 时间范围 ---------- */
+function buildTabs() {
+  $('range-tabs').innerHTML = RANGES.map(([m, t]) =>
+    `<button data-m="${m}" class="${m === rangeMin ? 'on' : ''}">${t}</button>`).join('');
+  document.querySelectorAll('#range-tabs button').forEach(b => {
+    b.onclick = () => setRange(+b.dataset.m);
+  });
+}
+function setRange(m) {
+  rangeMin = m; localStorage.setItem('range', m);
+  buildTabs(); loadHistory();
+}
+async function loadHistory() {
+  try {
+    const h = await (await fetch('/api/history?minutes=' + rangeMin)).json();
+    const rows = h.rows;
+    fill(cMain, rows, [1, 2]);
+    fill(cTemp, rows, [3, 4]);
+    fill(cPw,   rows, [5, 6]);
+    fill(cNet,  rows, [7, 8]);
+    lastHistoryLoad = Date.now();
+  } catch (e) {}
+}
+
+/* ---------- 实时数据 ---------- */
+function renderDisks(disks) {
+  $('disk-rows').innerHTML = disks.map(d => {
+    const cls = d.percent >= 90 ? 'hot' : d.percent >= 80 ? 'warn' : '';
+    return `<div class="diskrow">
+      <span class="dname">${esc(d.path)}</span>
+      <div class="bar-wrap" style="margin:0"><div class="bar ${cls}" style="width:${d.percent}%"></div></div>
+      <span class="dsize">${fmtSize(d.used)} / ${fmtSize(d.total)}</span>
+      <span class="dpct ${cls}">${d.percent.toFixed(0)}%</span>
+    </div>`;
+  }).join('');
+}
+function renderProcs(procs) {
+  if (!procs || !procs.length) return;
+  const list = procs.filter(p => p.name !== 'System Idle Process').slice(0, 6);
+  if (!list.length) return;
+  $('proc-rows').innerHTML = list.map(p =>
+    `<tr><td class="pname">${esc(p.name)}</td>
+     <td class="num">${p.cpu.toFixed(1)}%</td>
+     <td class="num" style="color:var(--dim)">${p.mem_mb.toFixed(0)} MB</td></tr>`).join('');
+}
+/* ---------- 硬盘健康 (SMART) ---------- */
+const HEALTH_TXT = { healthy: '良好', warning: '警告', unhealthy: '异常' };
+function renderDiskHealth(disks) {
+  if (!disks || !disks.length) {
+    $('dh-sum').textContent = '暂无数据';
+    $('dh-rows').innerHTML = '<tr><td colspan="8" class="h-sub" style="text-align:center;padding:14px">暂无数据</td></tr>';
+    return;
+  }
+  const temps = disks.map(x => x.temp).filter(t => t != null);
+  const maxT = temps.length ? Math.max(...temps) : null;
+  const bad = disks.some(x => (x.health || '').toLowerCase() === 'unhealthy' || (x.health || '').toLowerCase() === 'warning');
+  const sum = $('dh-sum');
+  sum.innerHTML = disks.length + ' 块盘 · 最高 ' +
+    (maxT != null ? '<b>' + maxT.toFixed(0) + '°C</b>' : '—') + ' · ' +
+    (bad ? '<span class="hot">存在异常</span>' : '全部健康');
+  $('dh-rows').innerHTML = disks.map(x => {
+    const h = (x.health || '').toLowerCase();
+    const hTxt = x.health ? (HEALTH_TXT[h] || esc(x.health)) : '—';
+    const hCls = h === 'healthy' ? 'ok' : (h === 'warning' || h === 'unhealthy') ? 'warn' : '';
+    const media = (x.media || '?') + (x.bus ? ' / ' + x.bus : '');
+    return `<tr>
+      <td title="${esc(x.model)}">${esc(x.model)}</td>
+      <td>${esc(x.letters || '—')}</td>
+      <td>${esc(media)}</td>
+      <td class="num">${x.temp != null ? tempText(x.temp) : '—'}</td>
+      <td class="num">${x.hours != null ? Number(x.hours).toLocaleString() + ' h' : '—'}</td>
+      <td class="num">${x.read_gb != null ? fmtSize(x.read_gb * 1024 * 1024 * 1024) : '—'}</td>
+      <td class="num">${x.write_gb != null ? fmtSize(x.write_gb * 1024 * 1024 * 1024) : '—'}</td>
+      <td class="${hCls}">${hTxt}</td>
+    </tr>`;
+  }).join('');
+}
+async function tick() {
+  try {
+    const d = await (await fetch('/api/current')).json();
+    $('lhm-status').innerHTML = d.lhm_ok
+      ? '<span class="dot ok"></span>传感器正常'
+      : '<span class="dot bad"></span>传感器离线';
+    $('cpu-name').textContent = d.cpu_name.replace(/.*(Intel|AMD)/, '$1').replace(/GenuineIntel|AuthenticAMD/, 'CPU') + ' · ' + d.cpu_count + ' 线程';
+    $('uptime').textContent = fmtUptime(d.uptime_s);
+    $('updated').textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+
+    // 状态行
+    const setB = (id, txt, cls) => { const e = $(id); e.textContent = txt; e.className = cls || ''; };
+    setB('s-cpu', d.cpu.toFixed(0) + '%');
+    setB('s-mem', d.mem.toFixed(0) + '%');
+    setB('s-cput', tempText(d.cpu_temp), tempClass(d.cpu_temp));
+    setB('s-mbt', tempText(d.mb_temp), tempClass(d.mb_temp));
+    setB('s-pw', d.est_power != null ? d.est_power.toFixed(1) + 'W' : '—');
+    setB('s-up', fmtBytes(d.net_up));
+    setB('s-dn', fmtBytes(d.net_down));
+
+    // 英雄卡
+    $('ring-cpu').style.strokeDashoffset = 339.3 * (1 - d.cpu / 100);
+    $('v-cpu').textContent = d.cpu.toFixed(0);
+    $('s-cpu-sub').textContent = d.cpu_count + ' 线程 · ' + d.cpu_name.replace(/.*(Intel|AMD)/, '$1').replace(/GenuineIntel|AuthenticAMD/, 'CPU');
+
+    $('v-mem').innerHTML = d.mem.toFixed(0) + '<small>%</small>';
+    const mb = $('mem-bar'); mb.style.width = d.mem + '%';
+    mb.className = 'bar' + (d.mem >= 90 ? ' warn' : '');
+    $('s-mem-detail').textContent = fmtSize(d.mem_used) + ' / ' + fmtSize(d.mem_total);
+    $('s-swap').textContent = (d.swap_percent || 0).toFixed(0) + '%';
+
+    setTC($('v-cput'), d.cpu_temp);
+    setTC($('v-mbt'), d.mb_temp);
+
+    $('v-pw').innerHTML = (d.est_power != null ? d.est_power.toFixed(1) : '—') + '<small> W</small>';
+    $('s-cpupw').textContent = d.cpu_power != null ? d.cpu_power.toFixed(1) + 'W' : '无数据';
+    $('v-kwh').textContent = d.energy_kwh.toFixed(3) + ' 度';
+
+    renderDisks(d.disks);
+    renderProcs(d.top_procs);
+    renderDiskHealth(d.disks_smart);
+
+    // 图表: 短范围实时追加, 长范围定期重拉
+    if (rangeMin <= 1440) {
+      const t = d.ts;
+      const push = (c, i, v) => { if (v != null) c.data.datasets[i].data.push({ x: t, y: v }); };
+      push(cMain, 0, d.cpu); push(cMain, 1, d.mem);
+      push(cTemp, 0, d.cpu_temp); push(cTemp, 1, d.mb_temp);
+      push(cPw, 0, d.cpu_power); push(cPw, 1, d.est_power);
+      push(cNet, 0, d.net_up); push(cNet, 1, d.net_down);
+      const cutoff = t - rangeMin * 60;
+      [cMain, cTemp, cPw, cNet].forEach(c =>
+        c.data.datasets.forEach(ds => { ds.data = ds.data.filter(p => p.x > cutoff); }));
+      [cMain, cTemp, cPw, cNet].forEach(c => c.update('none'));
+    } else if (Date.now() - lastHistoryLoad > 60000) {
+      loadHistory();
+    }
+  } catch (e) { /* 网络抖动忽略 */ }
+}
+
+fetch('/api/current').then(r => { if (r.status === 401) location.href = '/login'; });
+buildTabs();
+loadHistory();
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>

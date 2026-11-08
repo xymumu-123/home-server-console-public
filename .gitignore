@@ -1,0 +1,69 @@
+# ===== 真实配置与密钥 (严禁上传) =====
+config.ini
+config.ini.bak
+config.json
+config.json.bak
+config.example.ini.bak
+
+# ===== 运行数据 =====
+app/data.db
+app/data.db-wal
+app/data.db-shm
+app/data.db.bak
+sensors.json
+sensors.json.tmp
+app/sensor_watchdog.log
+app/ddns.log
+app/ddns.log.*.tmp
+app/_restart_web.log
+app/_install_watchdog.log
+*.log
+
+# ===== 用户数据 (由备份负责) =====
+app/static/game_icons/
+app/users_export*
+
+# ===== 大型第三方运行件 (按 README 单独部署) =====
+LibreHardwareMonitor/
+aria2/
+ffmpeg/
+lhm.zip
+*.zip
+
+# ===== Python 产物 =====
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# ===== 备份与临时 =====
+Monitor_backup_*/
+*_backup_*/
+app/config.ini.tmp
+app/*.tmp
+desktop.ini
+Thumbs.db
+
+# ===== 启动/传感器辅助 (机器相关) =====
+startup_backup/
+启动传感器服务.bat
+启动传感器服务
+# HTTPS 证书与 ACME 私钥
+certs/
+acme/account.key
+acme/acme.log
+app/_https_switch.log
+*.err
+app/thumbs/
+*.bak
+_smb_account.ps1
+app/_audit_fix.ps1
+app/_check.ps1
+app/_go.ps1
+app/_mig.ps1
+app/_restart.ps1
+app/_restart_tasks.ps1
+app/_rm_ddns.ps1
+app/_rm_svc.ps1
+app/_test_fs.ps1

@@ -1,0 +1,87 @@
+/* ============================================================
+   全局主题系统: 日间(默认) / 夜间, 由 <html data-theme> 驱动
+   所有页面通过 <link href="/static/theme.css"> 共享此文件
+   ============================================================ */
+:root, html[data-theme="light"] {
+  --bg: #eef1f6;          --bg-accent: #e2e9f4;
+  --card: #ffffff;        --card2: #f4f7fb;     --inset: #eceff5;
+  --line: #e4e9f2;        --line-strong: #d5dde9; --line-soft: rgba(100, 116, 139, .16);
+  --text: #1e293b;        --dim: #64748b;       --faint: #94a3b8;
+  --accent: #2f6fed;      --accent2: #5ea0ff;   --on-accent: #ffffff;
+  --accent-soft: #eaf1fe;
+  --ok: #16a34a;          --warn: #d97706;      --hot: #dc2626;
+  --ok-soft: #e8f7ee;     --warn-soft: #fdf3e0; --hot-soft: #fdecec;
+  --purple-soft: #f1e8fd;
+  --topbar: rgba(255, 255, 255, .92);
+  --scrim: rgba(239, 241, 246, .9);
+  --shadow: 0 1px 3px rgba(15, 23, 42, .05);
+  --shadow-lg: 0 12px 28px rgba(15, 23, 42, .10);
+}
+html[data-theme="dark"] {
+  --bg: #0b1220;          --bg-accent: #16233f;
+  --card: #151e31;        --card2: #1b2540;     --inset: #0c1424;
+  --line: #26324d;        --line-strong: #33415e; --line-soft: rgba(56, 78, 120, .38);
+  --text: #e5ecf8;        --dim: #8fa0bc;       --faint: #5c6b85;
+  --accent: #38bdf8;      --accent2: #818cf8;   --on-accent: #06121f;
+  --accent-soft: rgba(56, 189, 248, .15);
+  --ok: #4ade80;          --warn: #fbbf24;      --hot: #f87171;
+  --ok-soft: rgba(74, 222, 128, .12);
+  --purple-soft: rgba(167, 139, 250, .15);
+  --warn-soft: rgba(251, 191, 36, .12);
+  --hot-soft: rgba(248, 113, 113, .14);
+  --topbar: rgba(11, 18, 32, .88);
+  --scrim: rgba(11, 18, 32, .85);
+  --shadow: none;
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, .4);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: system-ui, "Microsoft YaHei", sans-serif;
+  background: radial-gradient(1200px 600px at 80% -10%, var(--bg-accent) 0%, var(--bg) 55%);
+  color: var(--text); min-height: 100vh;
+}
+
+/* ---- 顶栏与导航 (全站统一结构) ---- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--topbar); backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 22px; flex-wrap: wrap;
+}
+.nav { display: flex; gap: 6px; align-items: center; }
+.nav a {
+  padding: 8px 16px; border-radius: 10px; font-size: 13px; color: var(--dim);
+  text-decoration: none; border: 1px solid transparent; transition: .15s;
+}
+.nav a:hover { background: var(--card2); color: var(--text); }
+.nav a.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: var(--on-accent); font-weight: 600;
+}
+.tb-actions { display: flex; gap: 6px; align-items: center; }
+
+/* 手机顶栏重排: 按钮组绝对定位钉在右上角 (确定性布局), 导航标签下一行可滑动 */
+@media (max-width: 640px) {
+  .topbar { position: relative; padding: 10px 14px; }
+  .topbar .tb-actions { position: absolute; top: 10px; right: 12px; margin: 0; }
+  .topbar .brand { margin-right: 116px; }            /* 第一行右侧留给按钮组 */
+  .topbar .brand .cpu, .topbar .brand .meta { display: none; }
+  .topbar .brand br { display: none; }               /* 去掉空行, 状态徽标与名称并列 */
+  .topbar .pill { font-size: 10px; padding: 3px 8px; margin-left: 0 !important; }
+  .topbar .nav { width: 100%; overflow-x: auto; scrollbar-width: none; margin-top: 8px; justify-content: space-between; }
+  .topbar .nav::-webkit-scrollbar { display: none; }
+  .topbar .nav a { white-space: nowrap; padding: 8px 10px; }   /* 标签禁止折行 */
+  .topbar .statusline { width: 100%; margin-top: 8px; }
+}
+
+/* ---- 日/夜切换按钮 ---- */
+.theme-btn {
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card2); cursor: pointer; font-size: 15px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; transition: .15s;
+}
+.theme-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+html[data-theme="light"] .theme-btn .i-sun { display: none; }
+html[data-theme="dark"]  .theme-btn .i-moon { display: none; }

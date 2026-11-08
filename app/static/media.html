@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>影视库</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/video-js.min.css">
+<script src="/static/theme.js"></script>
+<script src="/static/common.js"></script>
+<script src="/static/netcheck.js"></script>
+<script src="/static/video.min.js"></script>
+<script src="/static/player.js"></script>
+<style>
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px 22px 50px; }
+
+  .sec { align-items: baseline; }          /* 页面变体: 标题基线对齐 */
+  .sec:first-child { margin-top: 0; }
+
+  /* 继续观看: 横向滚动卡片 */
+  .hrow { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+  .hcard { flex: 0 0 250px; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+           overflow: hidden; cursor: pointer; transition: .18s; position: relative; }
+  .hcard:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: var(--shadow-lg); }
+  .hcard .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: var(--inset); }
+  .hcard .h-info { padding: 10px 12px 12px; }
+  .hcard .h-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hcard .h-meta { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .hcard .h-prog { height: 5px; border-radius: 3px; background: var(--inset); overflow: hidden; margin-top: 8px; }
+  .hcard .h-prog div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  /* 全部影片海报墙 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+          cursor: pointer; transition: .18s; position: relative; }
+  .card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: var(--shadow-lg); }
+  .card .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: var(--inset); }
+  .card .c-info { padding: 10px 12px 12px; }
+  .card .c-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .c-meta { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .card .watched { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 600;
+                   background: var(--ok-soft); color: var(--ok); border-radius: 999px; padding: 3px 9px; }
+  .card .c-prog { position: absolute; left: 0; right: 0; bottom: 52px; height: 4px; background: rgba(0,0,0,.45); }
+  .card .c-prog div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .card .fallback { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+                    font-size: 40px; background: var(--inset); }
+
+  .empty { padding: 60px 0; font-size: 14px; }   /* 页面变体: 更大的空态内边距 */
+
+  /* 合集卡徽标 (集数进度, 与"已看完"绿标区分) */
+  .card .cc-badge { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 600;
+                    background: rgba(0,0,0,.55); color: #fff; border-radius: 999px; padding: 3px 9px; }
+
+  /* 剧集详情弹窗 (结构样式用 common.css 的 setdlg/set-box) */
+  #col-dlg .set-box { width: 660px; }
+  .col-sub { font-size: 12px; color: var(--dim); margin: -8px 0 12px; }
+  .season-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .season-tabs button { padding: 5px 14px; border-radius: 8px; border: 1px solid var(--line);
+                        background: var(--card2); color: var(--dim); font-size: 12px; cursor: pointer; }
+  .season-tabs button.on { background: var(--accent); border-color: var(--accent);
+                           color: var(--on-accent); font-weight: 600; }
+  .ep-row { display: flex; align-items: center; gap: 12px; padding: 9px 6px; font-size: 13px;
+            border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 8px; }
+  .ep-row:last-child { border-bottom: none; }
+  .ep-row:hover { background: var(--card2); }
+  .ep-label { flex: none; width: 64px; color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ep-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ep-state { flex: none; font-size: 11px; color: var(--dim); }
+  .ep-state.done { color: var(--ok); }
+  .ep-prog { flex: none; width: 90px; height: 4px; border-radius: 2px; background: var(--inset); overflow: hidden; }
+  .ep-prog div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  /* 待整理区 */
+  .pending-item { display: flex; align-items: center; gap: 12px; background: var(--card);
+                  border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+                  margin-bottom: 8px; font-size: 13px; }
+  .pending-item .p-name { font-weight: 600; flex: none; }
+  .pending-item .p-dir { color: var(--dim); font-size: 12px; flex: 1; overflow: hidden;
+                         text-overflow: ellipsis; white-space: nowrap; }
+  .pending-item a { flex: none; font-size: 12px; color: var(--accent); }
+  @media (max-width: 640px) { .hcard { flex-basis: 200px; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">影视库<span class="meta" id="count"></span></div>
+  <nav class="nav">
+    <a href="/">中控</a>
+    <a href="/monitor">监控</a>
+    <a href="/media" class="active">影视</a>
+    <a href="/files">文件</a>
+    <a href="/downloads">下载</a>
+    <a href="/games">游戏</a>
+  </nav>
+  <div class="tb-actions">
+    <button class="theme-btn" onclick="toggleTheme()" title="切换日间/夜间模式">
+      <span class="i-moon">🌙</span><span class="i-sun">☀️</span>
+    </button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="cont-area"></div>
+  <div class="sec">全部影片 <span class="n" id="all-n"></span></div>
+  <div class="grid" id="all-grid"><div class="empty">加载中…</div></div>
+  <div id="pending-area"></div>
+</div>
+
+<!-- 剧集详情弹窗 -->
+<div class="setdlg" id="col-dlg">
+  <div class="set-box">
+    <h3 id="col-title"></h3>
+    <div class="col-sub" id="col-sub"></div>
+    <div class="season-tabs" id="col-tabs"></div>
+    <div id="col-eps"></div>
+    <div class="set-acts"><button onclick="colClose()">关 闭</button></div>
+  </div>
+</div>
+
+<script>
+let data = { collections: [], movies: [], pending: [] };
+let flatIndex = {};            // path -> 可播条目 (电影 / 剧集单集)
+let colState = null;           // 当前打开的剧集弹窗 {info, season}
+
+const fmtT = s => { s = Math.max(0, s | 0); return (s / 60 | 0) + ':' + ('0' + s % 60).slice(-2); };
+const fmtWhen = ts => new Date(ts*1000).toLocaleString('zh-CN', {hour12:false, month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+const isWatching = p => p && p.position > 60 && p.duration && p.position < p.duration * 0.95;
+const isWatched = p => p && p.duration && p.position >= p.duration * 0.95;
+const pctOf = p => p && p.duration ? Math.min(100, p.position / p.duration * 100) : 0;
+
+function saveProgress(path, pos, dur) {
+  fetch('/api/media/progress', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path, position: pos, duration: dur})
+  }).catch(() => {});
+}
+
+function thumbHtml(path) {
+  const q = encodeURIComponent(path);
+  return `<img class="thumb" loading="lazy"
+            src="/api/fs/thumb?video=1&path=${q}"
+            onerror="thumbFail(this)">`;
+}
+
+function thumbFail(img) {
+  const d = document.createElement('div');
+  d.className = 'fallback';
+  d.textContent = '\u{1F3AC}';
+  img.replaceWith(d);
+}
+
+function render() {
+  // 扁平索引: 继续观看与播放按 path 取条目
+  flatIndex = {};
+  data.collections.forEach(c => c.episodes.forEach(e => {
+    e.series = c.name;
+    flatIndex[e.path] = e;
+  }));
+  data.movies.forEach(m => { flatIndex[m.path] = m; });
+
+  const parts = [];
+  if (data.collections.length) parts.push(data.collections.length + ' 部剧');
+  if (data.movies.length) parts.push(data.movies.length + ' 部电影');
+  $('count').textContent = parts.length ? '· ' + parts.join(' · ') : '';
+
+  // 继续观看 (单集粒度: 剧集单集 + 电影混排)
+  const watching = Object.values(flatIndex).filter(x => isWatching(x.progress))
+    .sort((a, b) => b.progress.updated_at - a.progress.updated_at);
+  const contArea = $('cont-area');
+  if (watching.length) {
+    contArea.innerHTML = `<div class="sec">继续观看 <span class="n">${watching.length} 个在看</span></div>
+      <div class="hrow">` + watching.map(x => {
+      const p = x.progress;
+      const disp = x.series
+        ? `${esc(x.series)} <span style="color:var(--accent)">${esc(x.label)}</span>`
+        : esc(x.name);
+      return `<div class="hcard" data-path="${esc(x.path)}">
+        ${thumbHtml(x.path)}
+        <div class="h-info">
+          <div class="h-name">${disp}</div>
+          <div class="h-meta">${fmtT(p.position)} / ${fmtT(p.duration)} · 还剩 ${fmtT(p.duration - p.position)}</div>
+          <div class="h-prog"><div style="width:${pctOf(p)}%"></div></div>
+        </div>
+      </div>`;
+    }).join('') + `</div>`;
+    contArea.querySelectorAll('.hcard').forEach(el => {
+      el.onclick = () => play(el.dataset.path);
+    });
+  } else {
+    contArea.innerHTML = '';
+  }
+
+  // 海报墙: 合集卡 + 电影卡按名称混排
+  const wall = [];
+  data.collections.forEach(c => wall.push({ name: c.name, c }));
+  data.movies.forEach(m => wall.push({ name: m.name, m }));
+  wall.sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
+  $('all-n').textContent = wall.length ? wall.length + ' 个条目' : '';
+  if (!wall.length) {
+    $('all-grid').innerHTML = '<div class="empty">媒体目录里还没有影片</div>';
+    renderPending();
+    return;
+  }
+  $('all-grid').innerHTML = wall.map(w => {
+    if (w.c) {
+      const c = w.c;
+      const done = c.total > 0 && c.watched >= c.total;
+      const badge = done ? '<span class="watched">已看完</span>'
+        : `<span class="cc-badge">${c.watched}/${c.total}</span>`;
+      const cont = c.cont;
+      const bar = cont ? `<div class="c-prog"><div style="width:${pctOf(cont)}%"></div></div>` : '';
+      const meta = `共 ${c.total} 集`
+        + (cont ? ` · 续播 ${cont.label}` : (done ? ' · 全部看完' : ''));
+      const thumbPath = cont ? cont.path : c.episodes[0].path;
+      return `<div class="card" data-col="${esc(c.key)}" title="${esc(c.name)}">
+        ${thumbHtml(thumbPath)}${badge}${bar}
+        <div class="c-info">
+          <div class="c-name">${esc(c.name)}</div>
+          <div class="c-meta">${meta}</div>
+        </div>
+      </div>`;
+    }
+    const it = w.m, p = it.progress;
+    const progHtml = (p && p.position > 10 && p.duration) ?
+      `<div class="c-prog"><div style="width:${pctOf(p)}%"></div></div>` : '';
+    const badge = isWatched(p) ? '<span class="watched">已看完</span>' : '';
+    const meta = fmtSize(it.size) + ' · ' + fmtWhen(it.mtime);
+    return `<div class="card" data-path="${esc(it.path)}" title="${esc(it.name)}">
+      ${thumbHtml(it.path)}${badge}${progHtml}
+      <div class="c-info">
+        <div class="c-name">${esc(it.name)}</div>
+        <div class="c-meta">${meta}</div>
+      </div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('#all-grid .card[data-path]').forEach(el => {
+    el.onclick = () => play(el.dataset.path);
+  });
+  document.querySelectorAll('#all-grid .card[data-col]').forEach(el => {
+    el.onclick = () => colOpen(el.dataset.col);
+  });
+  renderPending();
+}
+
+function renderPending() {
+  const area = $('pending-area');
+  if (!data.pending.length) { area.innerHTML = ''; return; }
+  area.innerHTML = `<div class="sec">待整理 <span class="n">识别不出集数的文件 — 同一部剧整理进同名文件夹后会自动归位</span></div>`
+    + data.pending.map(p => `<div class="pending-item">
+      <span class="p-name">${esc(p.name)}</span>
+      <span class="p-dir" title="${esc(p.folder)}">${esc(p.folder)}</span>
+      <a href="/files#${encodeURIComponent(p.folder)}">在文件页打开</a>
+    </div>`).join('');
+}
+
+/* ---------- 剧集详情弹窗 ---------- */
+function colOpen(key) {
+  const c = data.collections.find(x => x.key === key);
+  if (!c) return;
+  colState = { info: c, season: c.cont ? c.cont.season : c.seasons[0] };
+  $('col-title').textContent = c.name;
+  $('col-sub').textContent = `共 ${c.total} 集 · 已看 ${c.watched}`
+    + (c.cont ? ` · 续播 ${c.cont.label}` : '');
+  $('col-dlg').classList.add('show');
+  colRender();
+}
+
+function colRender() {
+  const c = colState.info;
+  const tabs = $('col-tabs');
+  if (c.seasons.length > 1) {
+    tabs.style.display = 'flex';
+    tabs.innerHTML = c.seasons.map(s =>
+      `<button class="${s === colState.season ? 'on' : ''}" data-s="${s}">第 ${s} 季</button>`).join('');
+    tabs.querySelectorAll('button').forEach(b => {
+      b.onclick = () => { colState.season = +b.dataset.s; colRender(); };
+    });
+  } else {
+    tabs.style.display = 'none';
+    tabs.innerHTML = '';
+  }
+  const eps = c.episodes.filter(e => e.season === colState.season);
+  $('col-eps').innerHTML = eps.map(e => {
+    const p = e.progress;
+    const st = isWatched(p) ? '<span class="ep-state done">已看完</span>'
+      : (p && p.position > 10 && p.duration) ? `<span class="ep-state">看到 ${Math.floor(pctOf(p))}%</span>`
+      : '<span class="ep-state">未看</span>';
+    const bar = `<div class="ep-prog">${(p && p.position > 10 && p.duration) ? `<div style="width:${pctOf(p)}%"></div>` : ''}</div>`;
+    return `<div class="ep-row" data-ep="${esc(e.path)}" title="${esc(e.name)}">
+      <span class="ep-label">${esc(e.label)}</span>
+      <span class="ep-name">${esc(e.name)}</span>
+      ${st}${bar}
+    </div>`;
+  }).join('');
+  document.querySelectorAll('#col-eps .ep-row').forEach(el => {
+    el.onclick = () => { colClose(); play(el.dataset.ep); };
+  });
+}
+
+function colClose() { $('col-dlg').classList.remove('show'); colState = null; }
+$('col-dlg').addEventListener('click', e => { if (e.target === $('col-dlg')) colClose(); });
+
+function play(path) {
+  const it = flatIndex[path];
+  const p = (it && it.progress) || {};
+  const startAt = (p.position > 60 && p.duration && p.position < p.duration * 0.95) ? p.position : 0;
+  openVideoPlayer(path, {
+    startAt,
+    onProgress: (pos, dur) => saveProgress(path, pos, dur)
+  });
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/media/list');
+    if (r.status === 401) { location.href = '/login'; return; }
+    data = await r.json();
+    render();
+  } catch (e) {
+    $('all-grid').innerHTML = '<div class="empty">加载失败</div>';
+  }
+}
+
+fetch('/api/current').then(r => { if (r.status === 401) location.href = '/login'; });
+// IPv4 备用线路门控: 仅 frp 线路受限 (大流量视频走 frp 会很慢)
+NetCheck.ensure().then(function () {
+  if (NetCheck.current() === 'v4') { NetCheck.gate('影视库'); return; }
+  load();
+});
+</script>
+</body>
+</html>

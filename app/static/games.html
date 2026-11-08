@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>游戏库</title>
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/common.css">
+<script src="/static/theme.js"></script>
+<script src="/static/common.js"></script>
+<script src="/static/netcheck.js"></script>
+<style>
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 16px 22px 50px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; margin-bottom: 20px; }
+
+  .steps { font-size: 13px; color: var(--dim); line-height: 1.9; margin: 10px 0 14px; }
+  .steps b { color: var(--text); }
+  .dlbtn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+           background: var(--accent); color: var(--on-accent); padding: 10px 22px;
+           border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .dlbtn:hover { filter: brightness(1.1); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  .game { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+          position: relative; transition: .18s; }
+  .game:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: var(--shadow-lg); }
+  .game .g-icon { width: 100%; aspect-ratio: 16/9; background: var(--inset); display: flex;
+                  align-items: center; justify-content: center; font-size: 42px; overflow: hidden; }
+  .game .g-icon img { width: 100%; height: 100%; object-fit: cover; }
+  .game .g-info { padding: 10px 12px 12px; }
+  .game .g-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game .g-meta { font-size: 11px; color: var(--dim); margin-top: 3px; margin-bottom: 9px; }
+  .game .g-badge { position: absolute; top: 8px; left: 8px; font-size: 10px; padding: 2px 8px; border-radius: 999px; }
+  .badge-ok { background: var(--ok-soft); color: var(--ok); }
+  .badge-warn { background: var(--warn-soft); color: var(--warn); }
+  .badge-playing { background: var(--accent-soft); color: var(--accent); }
+  .g-acts { display: flex; gap: 6px; }
+  .g-acts button { flex: 1; padding: 7px 0; border-radius: 8px; font-size: 12px; cursor: pointer;
+                   border: 1px solid var(--line); background: var(--card2); color: var(--text); }
+  .g-acts .b-play { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .g-acts .b-play:disabled { opacity: .45; cursor: not-allowed; }
+  .g-acts .b-del:hover { border-color: var(--hot); color: var(--hot); }
+
+  .disc-item { display: flex; align-items: center; gap: 12px; background: var(--card);
+               border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .disc-item .d-name { font-size: 13px; font-weight: 600; }
+  .disc-item .d-path { font-size: 11px; color: var(--dim); word-break: break-all; }
+  .disc-item button { margin-left: auto; padding: 8px 18px; border-radius: 8px; white-space: nowrap;
+                      border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
+                      font-size: 12px; font-weight: 600; cursor: pointer; }
+
+  .empty { text-align: center; color: var(--dim); padding: 40px 0; font-size: 13px; }
+
+  /* 弹窗 (结构样式在 common.css, 本页只调宽度) */
+  .set-box { width: 540px; }
+  .frow { margin-bottom: 12px; }
+  .frow label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 5px; }
+  .frow label .req { color: var(--hot); }
+  .frow input[type=text], .frow select { width: 100%; box-sizing: border-box; padding: 9px 11px;
+      border-radius: 9px; border: 1px solid var(--line); background: var(--card2); color: var(--text); font-size: 13px; }
+  .frow .hint { font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.6; }
+  .cover-row { display: flex; gap: 12px; align-items: center; }
+  .cover-prev { width: 120px; height: 68px; border-radius: 8px; background: var(--inset);
+                display: flex; align-items: center; justify-content: center; font-size: 24px; overflow: hidden; flex: none; }
+  .cover-prev img { width: 100%; height: 100%; object-fit: cover; }
+  .snap { display: flex; align-items: center; gap: 10px; background: var(--card2); border-radius: 10px;
+          padding: 8px 12px; margin-bottom: 6px; font-size: 12px; }
+  .snap .s-pc { font-weight: 600; }
+  .snap .s-meta { color: var(--dim); margin-left: auto; }
+  .snap a { color: var(--accent); text-decoration: none; }
+  .set-acts button.hot { background: var(--hot); border-color: var(--hot); color: #fff; font-weight: 600; }
+
+  .del-opt { display: flex; gap: 10px; margin-bottom: 12px; }
+  .del-opt label { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+                   cursor: pointer; font-size: 13px; background: var(--card2); }
+  .del-opt input { margin-right: 6px; }
+  .del-opt .t { font-weight: 600; margin-bottom: 4px; }
+  .del-opt .d { font-size: 11px; color: var(--dim); line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">游戏库</div>
+  <nav class="nav">
+    <a href="/">中控</a>
+    <a href="/monitor">监控</a>
+    <a href="/media">影视</a>
+    <a href="/files">文件</a>
+    <a href="/downloads">下载</a>
+    <a href="/games" class="active">游戏</a>
+  </nav>
+  <div class="tb-actions">
+    <button class="theme-btn" onclick="toggleTheme()" title="切换日间/夜间模式">
+      <span class="i-moon">🌙</span><span class="i-sun">☀️</span>
+    </button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="mob-hint" style="display:none;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:var(--dim)">
+    启动游戏请使用电脑访问，手机端可正常浏览与管理游戏库
+  </div>
+  <div class="card" id="setup-card" style="display:none">
+    <div style="font-size:14px;font-weight:700;margin-bottom:8px">接入新电脑（每台只需一次）</div>
+    <div class="steps">
+      <b>1.</b> 在那台电脑的浏览器打开本页面，点击下方按钮下载 <b>NasGame-setup.bat</b><br>
+      <b>2.</b> 双击运行（免管理员）—— 自动注册 <b>nasgame://</b> 一键启动协议<br>
+      <b>3.</b> 回到本页面，点游戏磁贴上的 <b>启动</b> —— 自动同步存档并启动游戏，退出后存档自动回传
+    </div>
+    <a class="dlbtn" href="/api/games/client/bat">下载 NasGame-setup.bat</a>
+  </div>
+
+  <div id="disc-area"></div>
+
+  <div class="sec">游戏库 <span class="n" id="g-count"></span><span class="spacer"></span>
+    <button id="btn-rescan" style="display:none" onclick="loadGames()">重新扫描</button>
+  </div>
+  <div class="grid" id="grid"><div class="empty">加载中…</div></div>
+</div>
+
+<!-- 配置弹窗 -->
+<div class="setdlg" id="cfg-dlg">
+  <div class="set-box">
+    <h3 id="cfg-title">添加游戏</h3>
+    <div class="frow"><label>游戏目录</label>
+      <div id="cfg-folder" style="font-size:12px;color:var(--dim);word-break:break-all"></div></div>
+    <div class="frow"><label>显示名称</label>
+      <input type="text" id="cfg-name" placeholder="游戏显示名"></div>
+    <div class="frow"><label>封面 <span style="color:var(--dim)">(png/jpg/webp ≤8MB, 不选则用程序图标)</span></label>
+      <div class="cover-row">
+        <div class="cover-prev" id="cfg-cover-prev">🎮</div>
+        <input type="file" id="cfg-cover" accept=".png,.jpg,.jpeg,.webp" style="font-size:12px">
+      </div></div>
+    <div class="frow"><label><span class="req">*</span> 启动主程序</label>
+      <select id="cfg-exe"></select>
+      <div class="hint">按建议度排序, 从游戏目录内选择</div></div>
+    <div class="frow"><label><span class="req">*</span> 存档路径模板</label>
+      <input type="text" id="cfg-savetpl" placeholder="例如 %USERPROFILE%\AppData\LocalLow\nexon\DAVE THE DIVER\SteamSData">
+      <div class="hint">推荐使用 <b>Windows 原生变量</b>，在每台电脑自动指向真实目录：
+        <b>%USERPROFILE%</b>=用户文件夹（C:\Users\里的那个）、<b>%APPDATA%</b>=Roaming、<b>%LOCALAPPDATA%</b>=Local。
+        例如 %USERPROFILE%\AppData\LocalLow\nexon\DAVE THE DIVER\SteamSData。
+        路径固定的游戏直接写死即可。配好后首次运行免手动输入。</div></div>
+    <div id="cfg-snaps-wrap">
+      <div class="frow"><label>存档快照（每次游玩前后自动备份）</label><div id="cfg-snaps"></div></div>
+    </div>
+    <div class="set-acts">
+      <button onclick="cfgClose()">取消</button>
+      <button class="primary" onclick="cfgSave()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除弹窗 -->
+<div class="setdlg" id="del-dlg">
+  <div class="set-box">
+    <h3 id="del-title">删除游戏</h3>
+    <div class="del-opt">
+      <label><input type="radio" name="delmode" value="display" checked onchange="delModeChange()">
+        <div class="t">删除显示</div>
+        <div class="d">仅从游戏库移除, 并清除该游戏的存档快照。游戏文件保留, 可重新扫描再添加。</div></label>
+      <label><input type="radio" name="delmode" value="uninstall" onchange="delModeChange()">
+        <div class="t">卸载游戏</div>
+        <div class="d">删除游戏本体目录（不可恢复）+ 清存档快照。请确认不再需要该游戏。</div></label>
+    </div>
+    <div class="frow" id="del-confirm-row" style="display:none">
+      <label><span class="req">*</span> 输入游戏名 <b id="del-confirm-name"></b> 以确认卸载</label>
+      <input type="text" id="del-confirm" placeholder="输入游戏名" oninput="delConfirmCheck()">
+    </div>
+    <div class="set-acts">
+      <button onclick="delClose()">取消</button>
+      <button class="hot" id="del-ok" onclick="delDo()">删除显示</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const IS_MOBILE = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+
+/* 磁贴/待添加按钮统一事件委托 (data-act), 不再拼 onclick 字符串 */
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b || b.disabled) return;
+  const id = b.dataset.id;
+  if (b.dataset.act === 'launch') launchGame(id);
+  else if (b.dataset.act === 'cfg') cfgOpen(id, null);
+  else if (b.dataset.act === 'del') delOpen(id);
+  else if (b.dataset.act === 'add') cfgOpen(null, id);
+});
+
+let gamesData = null, cfgTarget = null, cfgCoverFile = null, delTarget = null;
+
+async function init() {
+  if (!(await loadMe())) return;         // 401 已跳登录
+  // IPv4 备用线路门控: 仅 frp 线路受限 (局域网与 IPv6 直连均正常)
+  await NetCheck.ensure();
+  if (NetCheck.current() === 'v4') { NetCheck.gate('游戏库'); return; }
+  if (IS_MOBILE) $('mob-hint').style.display = 'block';
+  $('setup-card').style.display = hasPerm('games') ? '' : 'none';
+  $('btn-rescan').style.display = hasPerm('games') ? '' : 'none';
+  loadGames();
+}
+
+async function loadGames() {
+  // 首次进入: 优先用缓存立即渲染 (已上架游戏秒开), 后台刷新更新数据
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem('games_list_cache')); } catch (e) {}
+  if (cached && cached.games && !gamesData) {
+    gamesData = cached;
+    render();
+  }
+  try {
+    gamesData = await (await fetch('/api/games/list')).json();
+    try { localStorage.setItem('games_list_cache', JSON.stringify(gamesData)); } catch (e) {}
+    render();
+  } catch (e) {
+    if (!gamesData) $('grid').innerHTML = '<div class="empty">加载失败: ' + esc(e.message) + '</div>';
+  }
+}
+
+function render() {
+  const games = gamesData.games || [];
+  const disc = gamesData.discovered || [];
+  $('g-count').textContent = games.length ? games.length + ' 个游戏' : '';
+
+  $('grid').innerHTML = games.map(g => {
+    const lease = g.lease;
+    const playing = lease && Date.now() / 1000 - lease.started < 6 * 3600;
+    const badge = playing ? `<span class="g-badge badge-playing">${esc(lease.pc)} 游戏中</span>`
+      : !g.configured ? '<span class="g-badge badge-warn">待配置</span>'
+      : g.folder_missing ? '<span class="g-badge badge-warn">目录丢失</span>'
+      : '<span class="g-badge badge-ok">可启动</span>';
+    const icon = g.icon
+      ? `<img src="${esc(g.icon)}" onerror="this.parentElement.textContent='🎮'">` : '🎮';
+    const meta = g.folder_missing ? '游戏目录不存在'
+      : g.configured ? esc(g.save_tpl) : '存档路径未配置, 点「配置」完成添加';
+    const canLaunch = g.configured && !g.folder_missing && !IS_MOBILE;
+    return `<div class="game" data-id="${esc(g.id)}">
+      <div class="g-icon">${icon}</div>${badge}
+      <div class="g-info">
+        <div class="g-name">${esc(g.name)}</div>
+        <div class="g-meta" title="${esc(g.save_tpl || '')}">${meta}</div>
+        <div class="g-acts">
+          <button class="b-play" ${canLaunch ? '' : 'disabled'} data-act="launch" data-id="${esc(g.id)}">启动</button>
+          ${hasPerm('games') ? `<button data-act="cfg" data-id="${esc(g.id)}">配置</button>
+          <button class="b-del" data-act="del" data-id="${esc(g.id)}">删除</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">游戏库为空 — 扫描目录发现新游戏后, 点「添加」配置上架</div>';
+
+  $('disc-area').innerHTML = !hasPerm('games') || !disc.length ? '' :
+    '<div class="sec">待添加 <span class="n">扫描发现的新游戏, 配置后上架</span></div>' +
+    disc.map(d => `<div class="disc-item">
+      <div><div class="d-name">${esc(d.name)}</div>
+      <div class="d-path">${esc(d.folder)} · 候选主程序 ${d.candidates.length} 个</div></div>
+      <button data-act="add" data-id="${esc(d.id)}">添加</button>
+    </div>`).join('');
+}
+
+/* ---------- 配置弹窗 ---------- */
+async function cfgOpen(gid, discId) {
+  cfgCoverFile = null;
+  const games = gamesData.games || [], disc = gamesData.discovered || [];
+  let folder = '', name = '', exe = '', saveTpl = '', icon = null, snaps = null;
+  if (gid) {
+    const g = games.find(x => x.id === gid);
+    if (!g) return;
+    cfgTarget = { gid, folder: g.folder };
+    folder = g.folder; name = g.name; exe = g.exe || ''; saveTpl = g.save_tpl || '';
+    icon = g.icon; snaps = g.snapshots || [];
+    $('cfg-title').textContent = '配置 — ' + name;
+    $('cfg-snaps-wrap').style.display = '';
+  } else {
+    const d = disc.find(x => x.id === discId);
+    if (!d) return;
+    cfgTarget = { gid: null, folder: d.folder };
+    folder = d.folder; name = d.name;
+    $('cfg-title').textContent = '添加游戏';
+    $('cfg-snaps-wrap').style.display = 'none';
+  }
+  $('cfg-folder').textContent = folder;
+  $('cfg-name').value = name;
+  $('cfg-savetpl').value = saveTpl;
+  $('cfg-cover').value = '';
+  setCoverPreview(icon);
+  $('cfg-exe').innerHTML = '<option value="">加载候选中…</option>';
+  $('cfg-dlg').classList.add('show');
+  try {
+    const d = await (await fetch('/api/games/exes?folder=' + encodeURIComponent(folder))).json();
+    const cs = d.candidates || [];
+    $('cfg-exe').innerHTML = cs.length
+      ? cs.map(c => `<option value="${esc(c.path)}" ${c.path === exe ? 'selected' : ''}>
+           ${esc(c.desc || c.path.split('\\').pop())} · ${c.size_mb} MB</option>`).join('')
+      : '<option value="">未找到候选 exe — 请检查游戏目录</option>';
+    if (exe && !cs.some(c => c.path === exe))            // 已配置但不在候选里 (目录变动)
+      $('cfg-exe').insertAdjacentHTML('afterbegin',
+        `<option value="${esc(exe)}" selected>${esc(exe)} (当前)</option>`);
+  } catch (e) {
+    $('cfg-exe').innerHTML = '<option value="">候选加载失败</option>';
+  }
+  $('cfg-snaps').innerHTML = (snaps || []).length ? snaps.map(s =>
+    `<div class="snap"><span class="s-pc">${esc(s.pc)}</span>
+     <span class="s-meta">${new Date(s.ts * 1000).toLocaleString('zh-CN', {hour12: false})} · ${fmtSize(s.size)}</span>
+     <a href="/api/games/save/get-page?game=${encodeURIComponent(cfgTarget.gid || '')}&file=${encodeURIComponent(s.file)}">下载</a></div>`).join('')
+    : '<div style="font-size:12px;color:var(--dim)">暂无快照 — 通过启动器游玩后自动生成</div>';
+}
+
+function setCoverPreview(icon) {
+  $('cfg-cover-prev').innerHTML = icon
+    ? `<img src="${esc(icon)}" onerror="this.parentElement.textContent='🎮'">` : '🎮';
+}
+$('cfg-cover').addEventListener('change', e => {
+  const f = e.target.files[0];
+  cfgCoverFile = f || null;
+  if (!f) { setCoverPreview(cfgTarget && cfgTarget.gid ? null : null); return; }
+  const rd = new FileReader();
+  rd.onload = () => { $('cfg-cover-prev').innerHTML = `<img src="${rd.result}">`; };
+  rd.readAsDataURL(f);
+});
+
+async function cfgSave() {
+  if (!cfgTarget) return;
+  const body = {
+    game: cfgTarget.gid || '', folder: cfgTarget.folder,
+    name: $('cfg-name').value.trim(),
+    exe: $('cfg-exe').value,
+    save_tpl: $('cfg-savetpl').value.trim()
+  };
+  if (!body.exe) { alert('请选择启动主程序'); return; }
+  if (!body.save_tpl) { alert('存档路径模板不能为空'); return; }
+  const r = await fetch('/api/games/config', { method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  if (!r.ok) { alert('保存失败: ' + ((await r.json()).detail || r.statusText)); return; }
+  const gid = (await r.json()).game;
+  if (cfgCoverFile) {
+    const cr = await fetch('/api/games/cover?game=' + encodeURIComponent(gid),
+                           { method: 'POST', body: cfgCoverFile });
+    if (!cr.ok) alert('封面保存失败: ' + ((await cr.json()).detail || cr.statusText));
+  }
+  cfgClose();
+  loadGames();
+}
+function cfgClose() { $('cfg-dlg').classList.remove('show'); cfgTarget = null; cfgCoverFile = null; }
+// 配置/删除弹窗不响应点外部关闭 (防止误填数据丢失), 只能通过按钮关闭
+
+/* ---------- 删除弹窗 ---------- */
+function delOpen(gid) {
+  const g = (gamesData.games || []).find(x => x.id === gid);
+  if (!g) return;
+  delTarget = g;
+  $('del-title').textContent = '删除 — ' + g.name;
+  $('del-confirm-name').textContent = g.name;
+  document.querySelector('input[name=delmode][value=display]').checked = true;
+  $('del-confirm-row').style.display = 'none';
+  $('del-confirm').value = '';
+  delModeChange();
+  $('del-dlg').classList.add('show');
+}
+function delModeChange() {
+  const m = document.querySelector('input[name=delmode]:checked').value;
+  $('del-confirm-row').style.display = m === 'uninstall' ? '' : 'none';
+  $('del-ok').textContent = m === 'uninstall' ? '卸载游戏' : '删除显示';
+  delConfirmCheck();
+}
+function delConfirmCheck() {
+  const m = document.querySelector('input[name=delmode]:checked').value;
+  $('del-ok').disabled = m === 'uninstall' &&
+    $('del-confirm').value.trim() !== (delTarget || {}).name;
+}
+async function delDo() {
+  if (!delTarget) return;
+  const m = document.querySelector('input[name=delmode]:checked').value;
+  const r = await fetch('/api/games/delete', { method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ game: delTarget.id, mode: m }) });
+  if (!r.ok) { alert('删除失败: ' + ((await r.json()).detail || r.statusText)); return; }
+  delClose();
+  loadGames();
+}
+function delClose() { $('del-dlg').classList.remove('show'); delTarget = null; }
+// (del-dlg 同上, 不响应点外部关闭)
+
+/* ---------- 启动 ---------- */
+function launchGame(id) {
+  /* 触发 nasgame:// 协议: 装有客户端的电脑上会直接启动游戏 */
+  const f = document.createElement('iframe');
+  f.style.display = 'none';
+  f.src = 'nasgame://' + id;
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 3000);
+  alert('已向本机启动器发送启动指令。\n\n如果游戏没有启动，说明这台电脑还没接入：\n点页面顶部「下载 NasGame-setup.bat」接入后重试。\n\n启动命令（可复制到运行窗口）: nasgame://' + id);
+}
+
+init();
+</script>
+</body>
+</html>
