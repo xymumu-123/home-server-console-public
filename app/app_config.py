@@ -45,7 +45,7 @@ SCHEMA = {
     },
     "paths": {
         "media_dirs":   (T_LIST, "D:\\NAS\\Videos", False, "影视库扫描目录, 逗号分隔多个"),
-        "game_dirs":    (T_LIST, "G:\\MoveNas\\game, H:\\GameNas", False, "游戏库扫描根目录, 逗号分隔多个"),
+        "game_dirs":    (T_LIST, "D:\\Games", False, "游戏库扫描根目录, 逗号分隔多个"),
         "download_dir": (T_STR,  "D:\\NAS\\Downloads", False, "下载机默认下载目录"),
     },
     "games": {
