@@ -1,7 +1,7 @@
 /* netcheck.js - 线路判定 + IPv4 备用线路门控/提示 (全站共用)
  * 语义: 当前线路由访问入口唯一确定 (页面能打开就是连通证明, 零探测零误报):
- *   - pc2.jzlspace.top:18002 (IPv6 直连) → 'v6'
- *   - frp-net.com:62809    (IPv4 备用)   → 'v4'
+ *   - home.example.com:18002 (IPv6 直连) → 'v6'
+ *   - frp.example.com:62809    (IPv4 备用)   → 'v4'
  *   - 其他 (本机/局域网 IP)              → 'lan'
  * - 门控: 仅 current()==='v4' 时游戏/影视受限, 按钮直接跳转 IPv6 通道
  * - 线路状态显示与切换入口在中控页 hero 区 (line-mini), 右下角不再放徽章

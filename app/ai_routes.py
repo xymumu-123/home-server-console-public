@@ -58,9 +58,6 @@ def _dsh_bin():
     cands.append(os.path.expandvars("%APPDATA%" + sep + "npm" + sep + "node_modules"
                                     + sep + "@deepseek-ai" + sep + "dsh" + sep + "lib"
                                     + sep + "bin.js"))
-    cands.append("C:" + sep + "Users" + sep + "Admin" + sep + "AppData" + sep + "Roaming"
-                 + sep + "npm" + sep + "node_modules" + sep + "@deepseek-ai" + sep + "dsh"
-                 + sep + "lib" + sep + "bin.js")
     for cand in cands:
         if os.path.exists(cand):
             _DSH_BIN = cand

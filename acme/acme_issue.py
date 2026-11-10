@@ -7,7 +7,7 @@
 
 流程: 账户密钥(自动生成) -> new_order -> DNS-01 (west.cn add TXT -> 权威 NS 轮询 ->
 answer) -> finalize(CSR) -> 证书落盘 -> remove TXT -> 续期成功时触发服务重启。
-产物: D:\\Monitor\\certs\\pc2.jzlspace.top.fullchain.pem + .key.pem
+产物: D:\\Monitor\\certs\\home.example.com.fullchain.pem + .key.pem
 
 日志: D:\\Monitor\\acme\\acme.log (追加, 256KB 自动截断)
 """
@@ -32,7 +32,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import NameOID
 from josepy import JWK
 
-DOMAIN = "pc2.jzlspace.top"
+DOMAIN = "home.example.com"
 ACME_DIR = r"D:\Monitor\acme"
 CERT_DIR = r"D:\Monitor\certs"
 ACCOUNT_KEY = os.path.join(ACME_DIR, "account.key")

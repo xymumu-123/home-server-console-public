@@ -45,7 +45,7 @@ SCHEMA = {
     },
     "paths": {
         "media_dirs":   (T_LIST, "D:\\NAS\\Videos", False, "影视库扫描目录, 逗号分隔多个"),
-        "game_dirs":    (T_LIST, "G:\\MoveNas\\game, H:\\GameNas", False, "游戏库扫描根目录, 逗号分隔多个"),
+        "game_dirs":    (T_LIST, "D:\\Games, D:\\Games", False, "游戏库扫描根目录, 逗号分隔多个"),
         "download_dir": (T_STR,  "D:\\NAS\\Downloads", False, "下载机默认下载目录"),
     },
     "games": {
@@ -59,7 +59,7 @@ SCHEMA = {
         "lease_hours":      (T_INT, 6,  False, "游戏租约时长 (小时), 防止两台电脑同时玩同一游戏覆盖存档"),
         "cover_max_mb":     (T_INT, 8,  False, "游戏封面上限 (MB)"),
         "games_root":       (T_STR, "", False, "旧版单扫描根 (兼容保留, 推荐用 game_dirs)"),
-        "saves_root":       (T_STR, "", False, "游戏存档快照根目录 (如 G:\\movenas\\saves), 留空则游戏库存档功能不可用"),
+        "saves_root":       (T_STR, "", False, "游戏存档快照根目录 (如 D:\\saves), 留空则游戏库存档功能不可用"),
     },
     "ai": {
         "ai_api_key":  (T_STR, "", False, "DeepSeek API 密钥 (platform.deepseek.com 申请; AI 助手功能的模型后端)"),
