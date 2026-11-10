@@ -1,4 +1,4 @@
-$log = 'D:\Monitor\app\_restart_web.log'
+﻿$log = 'D:\Monitor\app\_restart_web.log'
 try {
   Get-Process ffmpeg -ErrorAction SilentlyContinue | Stop-Process -Force
   Get-Process aria2c -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -15,6 +15,8 @@ try {
     }
   schtasks /End /TN MonitorSensors 2>&1 | Out-Null
   schtasks /Run /TN MonitorSensors 2>&1 | Out-Null
+  # dsh web 引擎一并拉起 (dsh-web.ps1 自带单实例守卫, 已在跑则跳过)
+  Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\Monitor\dsh-web.ps1'
   schtasks /End /TN MonitorWeb 2>&1 | Out-Null
   Start-Sleep -Seconds 2
   schtasks /Run /TN MonitorWeb 2>&1 | Out-Null

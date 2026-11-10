@@ -1,249 +1,217 @@
 # -*- coding: utf-8 -*-
-"""AI 助手: DeepSeek Harness (dsh) 无头驱动 + SSE 流式 + 按账号会话隔离
+"""AI 助手: dsh (DeepSeek Harness) Web UI 的鉴权反向代理
 
-架构: 网页聊天 → FastAPI 鉴权(会话+ai权限位) → 每条消息驱动一次
-      `node dsh.js --profile headless --json [--session-id] "<消息>"` →
-      解析按行 JSON 事件流转发给浏览器 (SSE)。会话在 dsh 侧持久化,
-      按账号映射 session-id → 永久记忆、各账号互相隔离。
-安全: 入口 need_perm("ai"); dsh 引擎只在本机 spawn, 不直接对外。
+架构: 控制台 AI 磁贴/导航 → /ai/* (本模块: 登录 + ai 权限位门禁)
+      → 127.0.0.1:3080 (dsh web 常驻引擎, HTTP + WebSocket 透传)。
+dsh web 只绑回环, 永不直接对外; 引擎的工具 = 服务器 shell (全能力)。
+旧的自建聊天/headless 驱动已由 dsh 官方 Web UI 取代。
 """
 import asyncio
-import json
 import os
-import queue
-import shutil
-import subprocess
-import threading
-import time
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+import httpx
+from fastapi import APIRouter, HTTPException, Request, WebSocket
+from fastapi.responses import RedirectResponse, StreamingResponse
+from httpx_ws import WebSocketDisconnect as HttpxWSDisconnect
+from httpx_ws import aconnect_ws
 
-from auth import need_perm
+from auth import need_perm, check_token, get_user
 import app_config
-import db
 
-router = APIRouter(prefix="/api/ai")
+router = APIRouter(prefix="/ai")
 
-_ERR_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ai_errors.log")
+UPSTREAM = "http://127.0.0.1:3080"
 
-RUN_TIMEOUT = 900          # 单条消息的智能体运行上限 (秒), 超时强制终止
-MSG_MAX = 8000             # 单条消息字符上限
-_busy = set()              # 正在运行的用户 (每用户串行)
+# 逐跳头 (RFC 7230: 代理不转发)。注意 host/cookie 刻意转发:
+# dsh 信任围栏按 Host+Origin 校验, 其签名 cookie 是上游鉴权凭据。
+HOP_HEADERS = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+               "te", "trailer", "transfer-encoding", "upgrade",
+               "content-length", "accept-encoding"}
 
 
-def _elog(m):
-    """AI 模块错误落盘 (SYSTEM 会话无控制台, 不落盘就看不见)"""
+def _ai_perm_user(request_or_ws):
+    """会话 cookie → 用户; 无 ai 权限位返回 None"""
     try:
-        with open(_ERR_LOG, "a", encoding="utf-8") as f:
-            f.write("[" + time.strftime("%m-%d %H:%M:%S") + "] " + str(m) + chr(10))
+        token = request_or_ws.cookies.get("sid") or ""
+    except Exception:
+        return None
+    username = check_token(token)
+    if not username:
+        return None
+    u = get_user(username)
+    if not u or (not u.get("is_admin") and "ai" not in (u.get("perms") or [])):
+        return None
+    return u
+
+
+# ---------------------------------------------------------------- HTTP 反代
+# 注意: 这里只挂 "" (即 /ai 无斜杠); /ai/ 必须落进下方 {path:path} 通配透传,
+# 若此处再挂 "/" 会把 /ai/ 重定向回 /ai/ 造成自旋。
+@router.get("")
+async def ai_root(request: Request):
+    if not _ai_perm_user(request):
+        return RedirectResponse("/login", status_code=303)
+    return RedirectResponse("/ai/", status_code=307)
+
+
+@router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE",
+                                            "PATCH", "OPTIONS", "HEAD"])
+async def ai_proxy(path: str, request: Request):
+    user = _ai_perm_user(request)
+    if not user:
+        if _looks_like_browser(request):
+            return RedirectResponse("/login", status_code=303)
+        raise HTTPException(401, "unauth")
+
+    target = UPSTREAM + "/" + path
+    if request.url.query:
+        target += "?" + request.url.query
+
+    # 浏览器原始头基本原样转发 (含 Host/Cookie/Origin):
+    # dsh 的信任围栏按 Host+Origin 校验, 其签名 cookie 也必须能送达上游。
+    headers = {k: v for k, v in request.headers.items()
+               if k.lower() not in HOP_HEADERS}
+    body = await request.body()
+
+    client = httpx.AsyncClient(timeout=httpx.Timeout(60, read=300))
+    try:
+        up = await client.send(
+            client.build_request(request.method, target, headers=headers,
+                                 content=body if body else None),
+            stream=True)
+    except Exception as e:
+        await client.aclose()
+        raise HTTPException(502, f"dsh 引擎未响应: {e}")
+
+    # 首次访问: dsh 未认得浏览器 (无其签名 cookie) → 401。
+    # 从引擎日志取最新 token 自动补跳, 浏览器侧一次性铸 cookie, 用户无感。
+    if up.status_code == 401 and _looks_like_browser(request) \
+            and "token=" not in (request.url.query or ""):
+        await up.aclose()
+        await client.aclose()
+        tok = _latest_dsh_token()
+        if tok:
+            sep = "&" if request.url.query else ""
+            return RedirectResponse(
+                f"/ai/{path}?{request.url.query}{sep}token={tok}", status_code=302)
+        raise HTTPException(502, "dsh 引擎在线但未取得访问 token, 检查 logs/dsh-web.log")
+
+    async def stream():
+        try:
+            # aiter_bytes = httpx 已按协商编码解压; 响应头里 content-encoding 已剥
+            async for chunk in up.aiter_bytes():
+                yield chunk
+        finally:
+            await up.aclose()
+            await client.aclose()
+
+    resp_headers = {k: v for k, v in up.headers.items()
+                    if k.lower() not in HOP_HEADERS and k.lower() != "content-encoding"}
+    return StreamingResponse(stream(), status_code=up.status_code,
+                             headers=resp_headers, media_type=up.headers.get("content-type"))
+
+
+def _looks_like_browser(request: Request):
+    return "text/html" in (request.headers.get("accept") or "")
+
+
+def _wslog(msg):
+    """临时调试: WS 泵帧计数与关闭码 -> logs/ai-ws-debug.log"""
+    import time as _t
+    try:
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "logs", "ai-ws-debug.log"), "a", encoding="utf-8") as f:
+            f.write("[{}] {}\n".format(_t.strftime("%H:%M:%S"), msg))
     except Exception:
         pass
 
 
-# ---------------------------------------------------------------- dsh 定位与会话存取
-def _dsh_bin():
-    """定位全局安装的 dsh 入口 bin.js
-
-    候选顺序: config 显式配置 (ai_dsh_bin) → 当前用户 npm 全局 → 本机部署的实际位置。
-    禁止用 subprocess 探测 (npm 是 .cmd, 裸名字会 FileNotFoundError)。
-    """
-    global _DSH_BIN
-    if _DSH_BIN and os.path.exists(_DSH_BIN):
-        return _DSH_BIN
-    sep = chr(92)
-    cands = []
-    if cfg_dsh_bin := app_config.load().get("ai_dsh_bin"):
-        cands.append(cfg_dsh_bin)
-    cands.append(os.path.expandvars("%APPDATA%" + sep + "npm" + sep + "node_modules"
-                                    + sep + "@deepseek-ai" + sep + "dsh" + sep + "lib"
-                                    + sep + "bin.js"))
-    for cand in cands:
-        if os.path.exists(cand):
-            _DSH_BIN = cand
-            return _DSH_BIN
-    return None
-
-
-_DSH_BIN = None
-
-
-def _session_row(user):
-    conn = db.get_conn()
-    row = conn.execute("SELECT session_id, title FROM ai_sessions WHERE user=?", (user,)).fetchone()
-    conn.close()
-    return (row[0], row[1]) if row else (None, None)
-
-
-def _session_save(user, session_id, title):
-    conn = db.get_conn()
-    conn.execute("INSERT INTO ai_sessions (user, session_id, title, updated) VALUES (?,?,?,?) "
-                 "ON CONFLICT(user) DO UPDATE SET session_id=excluded.session_id, "
-                 "title=excluded.title, updated=excluded.updated",
-                 (user, session_id, title, time.time()))
-    conn.commit()
-    conn.close()
-
-
-def _session_clear(user):
-    conn = db.get_conn()
-    conn.execute("DELETE FROM ai_sessions WHERE user=?", (user,))
-    conn.commit()
-    conn.close()
-
-
-# ---------------------------------------------------------------- 路由
-@router.get("/state")
-def ai_state(request: Request):
-    user = need_perm(request, "ai")["username"]
-    sid, title = _session_row(user)
-    return {"session_id": sid, "title": title or "", "busy": user in _busy}
-
-
-@router.post("/new")
-async def ai_new(request: Request):
-    """开启新对话: 清掉映射, 下一条消息会创建全新的 dsh 会话"""
-    user = need_perm(request, "ai")["username"]
-    if user in _busy:
-        raise HTTPException(409, "上一条任务仍在执行")
-    _session_clear(user)
-    return {"ok": True}
-
-
-@router.post("/chat")
-async def ai_chat(request: Request):
-    user = need_perm(request, "ai")["username"]
+def _latest_dsh_token():
+    """从 dsh-web.log 取最新一次启动打印的访问 token (每次引擎启动会更换)"""
+    import re
     try:
-        body = await request.json()
+        log = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "logs", "dsh-web.log")
+        m = None
+        with open(log, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                mm = re.search(r"\?token=([A-Za-z0-9_\-]+)", line)
+                if mm:
+                    m = mm
+        return m.group(1) if m else None
     except Exception:
-        raise HTTPException(400, "请求体编码异常 (需 UTF-8)")
-    msg = (body.get("message") or "").strip()
-    new_session = bool(body.get("new_session"))
-    if not msg:
-        raise HTTPException(400, "消息为空")
-    if len(msg) > MSG_MAX:
-        raise HTTPException(400, f"消息过长 (上限 {MSG_MAX} 字符)")
-    if user in _busy:
-        raise HTTPException(409, "上一条任务仍在执行, 请等它完成或刷新页面")
+        return None
 
+
+# ---------------------------------------------------------------- WebSocket 反代
+# 上游 WS 客户端用 httpx-ws: dsh 的签名 cookie 绑定浏览器 authority (host:port),
+# 上游握手时 Host 必须与之一致才放行; websockets 库不支持 Host 覆盖, httpx 支持。
+@router.websocket("/{path:path}")
+async def ai_ws_proxy(ws: WebSocket, path: str):
+    user = _ai_perm_user(ws)
+    if not user:
+        await ws.close(code=1008)
+        return
+    query = ("?" + ws.url.query) if ws.url.query else ""
+    await ws.accept()
+    close_code = 1000
     try:
-        cfg = app_config.load()
-        api_key = cfg.get("ai_api_key") or ""
-        if not api_key:
-            raise HTTPException(400, "未配置 DeepSeek API 密钥 (config.ini [ai] ai_api_key)")
+        headers = {"Cookie": ws.headers.get("cookie") or ""}
+        # 保持浏览器原始 authority, 否则 dsh 按 cookie 绑定域拒绝 (401 unauthorized)
+        for h in ("host", "origin"):
+            v = ws.headers.get(h)
+            if v:
+                headers["Host" if h == "host" else "Origin"] = v
+        _wslog("open path=/{} host={} ck={}".format(path, ws.headers.get("host"), bool(ws.headers.get("cookie"))))
+        async with httpx.AsyncClient(base_url=UPSTREAM, timeout=None) as client:
+            async with aconnect_ws(UPSTREAM + "/" + path + query, client,
+                                   headers=headers) as up:
 
-        if new_session:
-            _session_clear(user)
-        sid, _title = _session_row(user)
-        title = msg[:24]
-
-        env = dict(os.environ)
-        env["DEEPSEEK_API_KEY"] = api_key
-
-        binjs = _dsh_bin()
-        if not binjs or not os.path.exists(binjs):
-            _elog("dsh bin 未找到 (PATH 与候选路径均无)")
-            raise HTTPException(500, "未找到 dsh 运行入口 (检查 npm 全局安装)")
-    except HTTPException:
-        raise
-    except Exception as e:
-        _elog("chat 准备失败: " + repr(e))
-        raise HTTPException(500, "AI 初始化失败 (详见 ai_errors.log)")
-
-    _busy.add(user)
-
-    async def gen():
-        q = queue.Queue()
-        holder = {}
-
-        # 同步线程跑 dsh 进程并按行投递事件 (Windows Selector 循环不支持 asyncio 子进程)
-        def run_dsh():
-            try:
-                for attempt in (1, 2):
-                    use_sid = sid if (attempt == 1 and sid) else None
-                    pargs = ["node", binjs, "--profile", "headless", "--json"]
-                    if use_sid:
-                        pargs += ["--session-id", use_sid]
-                    pargs.append(msg)
-                    proc = subprocess.Popen(
-                        pargs,
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        cwd=r"D:\Monitor", env=env,
-                        text=True, encoding="utf-8", errors="ignore")
-                    holder["proc"] = proc
-                    session_missing = False
-                    for line in proc.stdout:
-                        line = line.rstrip()
-                        if "does not exist" in line:
-                            session_missing = True
-                        q.put(("line", line))
-                    proc.wait()
-                    if session_missing and attempt == 1:
-                        q.put(("note", "stored session missing, retrying without session-id"))
-                        continue
-                    q.put(("exit", proc.returncode))
-                    return
-            except Exception as e:
-                q.put(("spawn_error", str(e)))
-
-        threading.Thread(target=run_dsh, daemon=True).start()
-
-        new_sid = None
-        final_text = None
-        err_text = None
-        deadline = time.time() + RUN_TIMEOUT
-        try:
-            yield 'data: {"type":"start"}\n\n'
-            while True:
-                if time.time() > deadline:
-                    p = holder.get("proc")
-                    if p and p.poll() is None:
-                        p.kill()
-                    yield 'data: {"type":"error","error":"任务超时被终止"}\n\n'
-                    break
-                try:
-                    kind, val = await asyncio.wait_for(
-                        asyncio.to_thread(q.get, True, 1), timeout=5)
-                except queue.Empty:
-                    continue
-                if kind == "spawn_error":
-                    yield 'data: {"type":"error","error":' + json.dumps(val, ensure_ascii=False) + '}\n\n'
-                    break
-                if kind == "line":
+                async def c2u():
+                    n = 0
                     try:
-                        ev = json.loads(val)
-                    except ValueError:
-                        continue
-                    et = ev.get("type")
-                    if et == "session" and not sid:
-                        new_sid = ev.get("sessionId")
-                    elif et == "final":
-                        final_text = ev.get("text") or ""
-                        reason = (ev.get("reason") or {})
-                        if reason.get("kind") == "error":
-                            err_text = (reason.get("error") or {}).get("message") or "未知错误"
-                    yield "data: " + json.dumps(ev, ensure_ascii=False) + "\n\n"
-                    if et == "final":
-                        break
-                elif kind == "exit":
-                    break
-            if new_sid:
-                _session_save(user, new_sid, title)
-            if err_text:
-                yield 'data: {"type":"error","error":' + json.dumps(err_text, ensure_ascii=False) + '}\n\n'
-            yield "data: [DONE]\n\n"
-        except Exception as e:
-            _elog("gen 异常: " + repr(e))
-            try:
-                yield 'data: {"type":"error","error":"内部错误 (详见 ai_errors.log)"}\n\n'
-            except Exception:
-                pass
-        finally:
-            _busy.discard(user)
-            p = holder.get("proc")
-            if p and p.poll() is None:
-                p.kill()
+                        while True:
+                            msg = await ws.receive()
+                            if msg["type"] == "websocket.disconnect":
+                                _wslog("c2u client-disconnect after {} frames".format(n))
+                                break
+                            if msg.get("text") is not None:
+                                n += 1
+                                await up.send_text(msg["text"])
+                            elif msg.get("bytes") is not None:
+                                n += 1
+                                await up.send_bytes(msg["bytes"])
+                    except Exception as e:
+                        _wslog("c2u exc {} after {} frames: {}".format(type(e).__name__, n, str(e)[:80]))
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+                async def u2c():
+                    nonlocal close_code
+                    n = 0
+                    try:
+                        while True:
+                            m = await up.receive()
+                            if isinstance(m.data, str):
+                                n += 1
+                                await ws.send_text(m.data)
+                            else:
+                                n += 1
+                                await ws.send_bytes(m.data)
+                    except HttpxWSDisconnect as e:
+                        close_code = e.code
+                        _wslog("u2c upstream-disconnect code={} after {} frames".format(e.code, n))
+                        raise
+                    except Exception as e:
+                        _wslog("u2c exc {} after {} frames: {}".format(type(e).__name__, n, str(e)[:100]))
+                        raise
+
+                done, pending = await asyncio.wait(
+                    [asyncio.create_task(c2u()), asyncio.create_task(u2c())],
+                    return_when=asyncio.FIRST_COMPLETED)
+                for t in pending:
+                    t.cancel()
+    except Exception:
+        pass
+    try:
+        await ws.close(code=close_code)
+    except Exception:
+        pass

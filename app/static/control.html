@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -6,10 +6,8 @@
 <title>服务器中控台</title>
 <link rel="stylesheet" href="/static/theme.css">
 <link rel="stylesheet" href="/static/common.css">
-<link rel="stylesheet" href="/static/ai.css">
 <script src="/static/theme.js"></script>
 <script src="/static/common.js"></script>
-<script src="/static/ai.js"></script>
 <script src="/static/netcheck.js"></script>
 <link rel="manifest" href="/static/manifest.json">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
@@ -363,7 +361,7 @@
       <div class="t-badge"><span class="dim2">潜水员戴夫 · 双人成行</span></div>
       <span class="t-arrow">›</span>
     </a>
-    <div class="tile" style="display:none" data-need="ai" onclick="aiDrawerOpen()">
+    <div class="tile" style="display:none" data-need="ai" onclick="location.href='/ai/'">
       <div class="t-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" width="26" height="26"><path d="M12 3l1.9 5.3L19 10l-5.1 1.7L12 17l-1.9-5.3L5 10l5.1-1.7z"/><path d="M18 16l.9 2.1L21 19l-2.1.9L18 22l-.9-2.1L15 19l2.1-.9z"/></svg></div>
       <div class="t-name">AI 助手</div>
       <div class="t-desc">随时使唤的服务器管家</div>
@@ -1075,20 +1073,5 @@ wolLoad();
     </div>
   </div>
 </div>
-<div class="aidrawer" id="aidrawer">
-  <div class="aidrawer-head">
-    <div class="t">AI 助手 · 服务器管家</div>
-    <button class="theme-btn" onclick="aiDrawerClose()" title="收起">✕</button>
-  </div>
-  <div id="airoot" style="flex:1;display:flex;min-height:0"></div>
-</div>
-<script>
-let _aiInited = false;
-function aiDrawerOpen() {
-  document.getElementById('aidrawer').classList.add('open');
-  if (!_aiInited) { _aiInited = true; AIChat.init(document.getElementById('airoot'), { compact: true }); }
-}
-function aiDrawerClose() { document.getElementById('aidrawer').classList.remove('open'); }
-</script>
 </body>
 </html>

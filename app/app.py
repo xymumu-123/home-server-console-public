@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 家庭服务器监控站 — 应用装配层
 - 页面路由 / 登录 / 监控 API / 设置 / 人员管理 / DDNS 入口留在本文件
@@ -250,13 +250,6 @@ def games_page(request: Request):
     if not is_authed(request):
         return RedirectResponse("/login", status_code=303)
     return serve_page("games.html")
-
-
-@app.get("/ai")
-def ai_page(request: Request):
-    if not is_authed(request):
-        return RedirectResponse("/login", status_code=303)
-    return serve_page("ai.html")
 
 
 @app.get("/downloads")
