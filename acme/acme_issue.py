@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Let's Encrypt 证书签发/续期脚本 (DNS-01, DNS 服务商 API 自动添删 TXT)
+"""Let's Encrypt 证书签发/续期脚本 (DNS-01, west.cn API 自动添删 TXT)
 
 用法:
     python acme_issue.py --staging     # 测试签发 (LE staging, 不占生产限频)
     python acme_issue.py               # 生产签发/续期 (计划任务每天跑, 30 天内到期才真正签)
 
-流程: 账户密钥(自动生成) -> new_order -> DNS-01 (DNS 服务商 add TXT -> 权威 NS 轮询 ->
+流程: 账户密钥(自动生成) -> new_order -> DNS-01 (west.cn add TXT -> 权威 NS 轮询 ->
 answer) -> finalize(CSR) -> 证书落盘 -> remove TXT -> 续期成功时触发服务重启。
-产物: D:\\Monitor\\certs\\home.example.com.fullchain.pem + .key.pem
+产物: D:\\Monitor\\certs\\pc2.jzlspace.top.fullchain.pem + .key.pem
 
 日志: D:\\Monitor\\acme\\acme.log (追加, 256KB 自动截断)
 """
@@ -32,7 +32,7 @@ from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import NameOID
 from josepy import JWK
 
-DOMAIN = "home.example.com"
+DOMAIN = "pc2.jzlspace.top"
 ACME_DIR = r"D:\Monitor\acme"
 CERT_DIR = r"D:\Monitor\certs"
 ACCOUNT_KEY = os.path.join(ACME_DIR, "account.key")
@@ -58,13 +58,13 @@ def log(msg):
         pass
 
 
-# ---------------------------------------------------------------- DNS 服务商 DNS API
+# ---------------------------------------------------------------- west.cn DNS API
 import app_config
 _DDNS = app_config.load()["ddns"]
 
 
 def _west_api(extra_params):
-    """调 DNS 服务商 DNS API; 返回 (ok, body_dict)"""
+    """调 west.cn DNS API; 返回 (ok, body_dict)"""
     base = _DDNS["api_key"].replace("#{domain}", _DDNS["domain"]).replace("#{ip}", "0.0.0.0")
     items = [[k, v] for k, v in (kv.split("=", 1) for kv in base.split("&"))]
     for k, v in extra_params.items():

@@ -34,6 +34,13 @@ def init_db():
         )
     conn.execute("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)")
     conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_sessions (
+               user TEXT PRIMARY KEY,
+               session_id TEXT,
+               title TEXT DEFAULT '',
+               updated REAL)"""
+    )
+    conn.execute(
         """CREATE TABLE IF NOT EXISTS watch_progress (
                path TEXT PRIMARY KEY,
                position REAL DEFAULT 0,

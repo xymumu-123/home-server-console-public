@@ -57,13 +57,4 @@ app/_https_switch.log
 *.err
 app/thumbs/
 *.bak
-_smb_account.ps1
-app/_audit_fix.ps1
-app/_check.ps1
-app/_go.ps1
-app/_mig.ps1
-app/_restart.ps1
-app/_restart_tasks.ps1
-app/_rm_ddns.ps1
-app/_rm_svc.ps1
-app/_test_fs.ps1
+ai-runtime/

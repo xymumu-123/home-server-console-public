@@ -64,7 +64,7 @@ Monitor/
 ├── requirements.txt          # Python 依赖
 ## HTTPS (已启用)
 
-- 主线路 `https://home.example.com:18002`（Let's Encrypt 证书, DNS-01 验证）
+- 主线路 `https://pc2.jzlspace.top:18002`（Let's Encrypt 证书, DNS-01 验证）
 - 签发/续期: `python acme/acme_issue.py`（计划任务 MonitorAcmeRenew 每天 05:30 自动跑, 剩余 30 天内才真正重签, 续期后自动重启服务）
 - 证书文件在 `certs/`（gitignore）, 账户密钥 `acme/account.key`（勿删勿传, 删了要重新注册账户）
 - 服务端: `[server] ssl_cert/ssl_key` 两键控制, **留空 = 回滚纯 HTTP**（portproxy 指回 8000）

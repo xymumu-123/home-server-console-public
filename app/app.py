@@ -27,6 +27,7 @@ from probe_routes import router as probe_router
 from share_routes import router as share_router
 from dl_routes import router as dl_router, aria2_maintenance
 from power_routes import router as power_router
+from ai_routes import router as ai_router
 from media_routes import router as media_router
 import app_config
 import ddns
@@ -52,6 +53,7 @@ app.include_router(share_router)
 app.include_router(dl_router)
 app.include_router(power_router)
 app.include_router(media_router)
+app.include_router(ai_router)
 
 init_db()
 migrate_admin()          # config.json 明文 admin 密码 → users 表 (幂等)
@@ -59,7 +61,7 @@ migrate_admin()          # config.json 明文 admin 密码 → users 表 (幂等
 
 @app.middleware("http")
 async def hsts_header(request: Request, call_next):
-    """HSTS: 浏览器记住后, 任何 http://home.example.com:<任意端口> 的访问都会被
+    """HSTS: 浏览器记住后, 任何 http://pc2.jzlspace.top:<任意端口> 的访问都会被
     自动改写为 https (解决地址栏默认猜 http 导致打不开的问题)。
     浏览器规范规定 HTTP 响应里的 HSTS 会被忽略, 所以无条件加是安全的。
     30 天有效期, 每次 https 访问自动续; 回滚 HTTP 时需在浏览器清除 HSTS 记录。"""
@@ -248,6 +250,13 @@ def games_page(request: Request):
     if not is_authed(request):
         return RedirectResponse("/login", status_code=303)
     return serve_page("games.html")
+
+
+@app.get("/ai")
+def ai_page(request: Request):
+    if not is_authed(request):
+        return RedirectResponse("/login", status_code=303)
+    return serve_page("ai.html")
 
 
 @app.get("/downloads")

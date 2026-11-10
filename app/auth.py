@@ -22,10 +22,22 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE, "data.db")
 CONFIG_PATH = os.path.join(os.path.dirname(BASE), "config.ini")   # INI 配置 (app_config 管理)
 
-PERMS = ["users", "games", "files", "system", "downloads"]
+PERMS = ["users", "games", "files", "system", "downloads", "ai"]
 PERM_NAMES = {"users": "人员管理", "games": "游戏管理", "files": "全盘资源",
-              "system": "系统高级", "downloads": "下载管理"}
+              "system": "系统高级", "downloads": "下载管理", "ai": "AI 助手"}
 ADMIN = "admin"
+
+
+def _normalize_perms(username, raw):
+    """存储权限列表 → 有效权限列表 (过滤未知位); admin 永远持有全部权限位
+    (新增权限位自动跟随, 老账号无需数据迁移)"""
+    try:
+        perms = [p for p in json.loads(raw) if p in PERMS]
+    except Exception:
+        perms = []
+    if username == ADMIN:
+        return list(PERMS)
+    return perms
 
 import app_config
 CFG = app_config.load()                 # 统一配置: 全部来自项目根 config.ini
@@ -82,10 +94,7 @@ def get_user(username):
                         (username,)).fetchone()
     if not row:
         return None
-    try:
-        perms = [p for p in json.loads(row[0]) if p in PERMS]
-    except Exception:
-        perms = []
+    perms = _normalize_perms(username, row[0])
     return {"username": username, "perms": perms, "created_ts": row[1],
             "is_admin": username == ADMIN}
 
@@ -97,12 +106,8 @@ def list_users():
                          "ORDER BY created_ts").fetchall()
     out = []
     for name, perms, ts in rows:
-        try:
-            perms = [p for p in json.loads(perms) if p in PERMS]
-        except Exception:
-            perms = []
-        out.append({"username": name, "perms": perms, "created_ts": ts,
-                    "is_admin": name == ADMIN})
+        out.append({"username": name, "perms": _normalize_perms(name, perms),
+                    "created_ts": ts, "is_admin": name == ADMIN})
     return out
 
 
